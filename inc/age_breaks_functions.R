@@ -127,6 +127,8 @@ setAgeBreaks = function(age_breaks, minage = set_units(0, "years"), maxage = set
     to = c(age_breaks_years[-1], maxage)
   )
   
+  age_groups[, name := factor(name, age_group_names)]
+  
   return(age_groups)
 }
 
@@ -307,4 +309,69 @@ matchingAgeBreaks = function(target, additional){
   }
   
   return(z_target[, c("name.x", "name.y")])
+}
+
+combineAgeBreaks2 = function(target, additional, method = c("mean", "sum")[1], value.var = "value", additional_group = NULL){
+  onesec = set_units(1, "second")
+  
+  lt = function(a, b){
+    (a - b) < onesec
+  }
+  gt = function(a, b){
+    (a - b) > onesec
+  }
+  
+  additional_age_groups = additional %>% .[, c("name", "from", "to")] %>% unique()
+  z_target = copy(target) %>% setorder(from, to)
+  z_target[, row := 1:.N]
+  z_additional_age_groups = copy(additional_age_groups) %>% setorder(from, to) %>% .[, row := 1:.N]
+  
+  output = list()
+  for(a in 1:nrow(z_target)){
+    ages_that_overlap = z_additional_age_groups[!gt(z_target[a, from], to-onesec*2) & !lt(z_target[a, to]-onesec*2, from) & lt(z_target[a, from], to-onesec*2)]
+    first = first(ages_that_overlap[, row])
+    last = last(ages_that_overlap[, row])
+    dur = z_target[a, to - from]
+    
+    value_rows = first:last
+    value_duration = z_additional_age_groups[value_rows, to - from]
+    value_duration[1] = min(z_additional_age_groups[value_rows[1], to], z_target[a, to]) - z_target[a, from]
+    if(length(value_rows) > 1) value_duration[length(value_rows)] = z_target[a, to] - z_additional_age_groups[value_rows[length(value_rows)], from]
+    
+    if(sum(value_duration) != sum(z_target[a, to - from]))
+      stop("Something went wrong - durations not equal")
+    if(any(as.numeric(value_duration/z_additional_age_groups[value_rows, to - from]) > 1 | as.numeric(value_duration/z_additional_age_groups[value_rows, to - from]) < 0))
+      stop("Something went wrong - duration greater than 1")
+    
+    if(method == "mean"){
+      ages_that_overlap[, weight := value_duration]  
+    } else if(method == "sum"){
+      ages_that_overlap[, weight := as.numeric(value_duration/z_additional_age_groups[value_rows, to - from])]  
+    }
+    
+    z_additional = copy(additional)
+    z_additional = z_additional %>% merge(ages_that_overlap[, c("name", "weight")], by="name")
+    
+    z_additional = value.var %>% lapply(function(val){
+      if(method == "mean")
+        tmp = z_additional[, .(val = weighted.mean(get(val), weight)), by=additional_group]
+      else if(method == "sum")
+        tmp = z_additional[, .(val = sum(get(val) * weight)), by=additional_group]
+        #z_target[a, val] = sum(as.numeric(value_duration/z_additional[value_rows, to - from]) * z_additional[value_rows, get(val)])
+      colnames(tmp)[which(colnames(tmp) == "val")] = val
+      return(tmp)
+      }) %>% (function(x){
+        tmp = x[[1]]
+        if(length(x) > 1){
+          for(i in 2:length(x)){
+            tmp %<>% merge(x[[i]], by = additional_group)
+          }
+        }
+        return(tmp)
+      })
+    
+    output[[length(output) + 1]] = z_target[a, ] %>% cbind(z_additional) %>% .[, -"row"]
+  }
+  
+  return(rbindlist(output))
 }
