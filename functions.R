@@ -447,6 +447,7 @@ adjustContactMatrixAgeGroups = function(age_groups_model, contact_matrix_data, c
 }
 
 #' Get dominant eigenvalue
+#' - todo, calculate for NGM
 dominantEigenValue = function(contact_matrix){
   return(Re(eigen(contact_matrix, only.values = TRUE)[["values"]][1]))
 }
