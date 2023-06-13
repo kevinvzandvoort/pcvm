@@ -57,77 +57,79 @@ setAgeBreaks = function(age_breaks, minage = set_units(0, "years"), maxage = set
     }
   }
   
-  age_group_names = character(length(age_breaks_years))
-  for(i in seq_along(age_types)){
-    unit = names(age_types)[i]
-    label = age_types[i]
-    
-    if(!any(age_breaks_types == label)) next
-    
-    is_seq = age_breaks_years[age_breaks_types == label] %>%
-      set_units(unit, mode = "standard") %>% diff %>% round %>% (function(x) as.integer(x) > 1)
-    if(i < length(age_types)){
-      is_seq_last = age_breaks_years[which(age_breaks_types == label) %>% rev %>% .[1] %>%
-                                       (function(x) x + c(0, 1))] %>%
-        set_units(unit, mode = "standard") %>% diff() %>% round %>% (function(x) as.integer(x) > 1)
-      is_seq = c(is_seq, is_seq_last) 
-    } else {
-      is_seq_last = FALSE
-    }
-    
-    if(any(!is_seq)){
-      no_seqs = paste0(age_breaks_years[age_breaks_types == label][which(!is_seq)] %>%
-                         set_units(unit, mode = "standard"), label)
-      age_group_names[age_breaks_types[-length(age_breaks_types)] == label][which(!is_seq)] = no_seqs
-    }
-    if(any(is_seq)){
-      seqs = paste0(age_breaks_years[age_breaks_types == label][which(is_seq)] %>%
-                      set_units(unit, mode = "standard"), "-",
-                    (age_breaks_years[age_breaks_types == label][1 + which(is_seq)] %>%
-                       set_units(unit, mode = "standard") - set_units(1, unit, mode = "standard")), label)
-      if(is_seq_last){
-        #' Really only makes sense with other labelling
-        last_name = paste0(age_breaks_years[age_breaks_types == label][max(which(is_seq))] %>%
-                             set_units(unit, mode = "standard"), label, "- <",
-                           age_breaks_years[which(age_breaks_types == label) %>% rev %>% .[1] + 1] %>%
-                             set_units(age_types %>%
-                                         subset(. == age_breaks_types[which(age_breaks_types == label) %>%
-                                                                        rev %>% .[1] + 1]) %>%
-                                         names, mode = "standard"),
-                           age_breaks_types[which(age_breaks_types == label) %>% rev %>% .[1] + 1])
-        ##last_name = paste0(age_breaks_years[age_breaks_types == label][max(which(is_seq))] %>%
-        ##                     set_units(unit, mode = "standard"), label, "-",
-        ##                            (age_breaks_years[which(age_breaks_types == label) %>% rev %>% .[1] + 1] %>%
-        ##                     set_units(unit, mode = "standard") - set_units(1, unit, mode = "standard")),
-        ##                   age_breaks_types[which(age_breaks_types == label) %>% rev %>% .[1] + 1])
-        warning(sprintf("Age-group '%s' spans a range between different types, check to make sure this is correct",
-                        last_name))
-        seqs[length(seqs)] = last_name
-      }
-      age_group_names[age_breaks_types[-length(age_breaks_types)] == label][which(is_seq)] = seqs
-    }
-  }
-  if(length(age_group_names) > 1){
-    age_group_names[1] = paste0("<",
-                                age_breaks_years[2] %>%
-                                  set_units(age_types %>% subset(. == age_breaks_types[2]) %>% names, mode = "standard"),
-                                age_breaks_types[2])
-    age_group_names[length(age_group_names)] = paste0(age_breaks_years %>% rev %>% .[1] %>%
-                                                        set_units(age_types %>% subset(. == age_breaks_types %>% rev %>%
-                                                                                         .[1]) %>% names,
-                                                                  mode = "standard"), "+",
-                                                      age_breaks_types %>% rev %>% .[1])
-  } else {
-    age_group_names[1] = paste0("<", maxage, "y")
-  }
+  #age_group_names = character(length(age_breaks_years))
+  #for(i in seq_along(age_types)){
+  #  unit = names(age_types)[i]
+  #  label = age_types[i]
+  #  
+  #  if(!any(age_breaks_types == label)) next
+  #  
+  #  is_seq = age_breaks_years[age_breaks_types == label] %>%
+  #    set_units(unit, mode = "standard") %>% diff %>% round %>% (function(x) length(x) > 0 && as.integer(x) > 1)
+  #  if(i < length(age_types)){
+  #    is_seq_last = age_breaks_years[which(age_breaks_types == label) %>% rev %>% .[1] %>%
+  #                                     (function(x) x + c(0, 1))] %>% na.omit %>%
+  #      set_units(unit, mode = "standard") %>% diff() %>% round %>% (function(x) length(x) > 0 && as.integer(x) > 1)
+  #    is_seq = c(is_seq, is_seq_last) 
+  #  } else {
+  #    is_seq_last = FALSE
+  #  }
+  #  
+  #  if(any(!is_seq)){
+  #    no_seqs = paste0(age_breaks_years[age_breaks_types == label][which(!is_seq)] %>%
+  #                       set_units(unit, mode = "standard"), label)
+  #    age_group_names[age_breaks_types[-length(age_breaks_types)] == label][which(!is_seq)] = no_seqs
+  #  }
+  #  if(any(is_seq)){
+  #    seqs = paste0(age_breaks_years[age_breaks_types == label][which(is_seq)] %>%
+  #                    set_units(unit, mode = "standard"), "-",
+  #                  (age_breaks_years[age_breaks_types == label][1 + which(is_seq)] %>%
+  #                     set_units(unit, mode = "standard") - set_units(1, unit, mode = "standard")), label)
+  #    if(is_seq_last){
+  #      #' Really only makes sense with other labelling
+  #      last_name = paste0(age_breaks_years[age_breaks_types == label][max(which(is_seq))] %>%
+  #                           set_units(unit, mode = "standard"), label, "- <",
+  #                         age_breaks_years[which(age_breaks_types == label) %>% rev %>% .[1] + 1] %>%
+  #                           set_units(age_types %>%
+  #                                       subset(. == age_breaks_types[which(age_breaks_types == label) %>%
+  #                                                                      rev %>% .[1] + 1]) %>%
+  #                                       names, mode = "standard"),
+  #                         age_breaks_types[which(age_breaks_types == label) %>% rev %>% .[1] + 1])
+  #      ##last_name = paste0(age_breaks_years[age_breaks_types == label][max(which(is_seq))] %>%
+  #      ##                     set_units(unit, mode = "standard"), label, "-",
+  #      ##                            (age_breaks_years[which(age_breaks_types == label) %>% rev %>% .[1] + 1] %>%
+  #      ##                     set_units(unit, mode = "standard") - set_units(1, unit, mode = "standard")),
+  #      ##                   age_breaks_types[which(age_breaks_types == label) %>% rev %>% .[1] + 1])
+  #      warning(sprintf("Age-group '%s' spans a range between different types, check to make sure this is correct",
+  #                      last_name))
+  #      seqs[length(seqs)] = last_name
+  #    }
+  #    age_group_names[age_breaks_types[-length(age_breaks_types)] == label][which(is_seq)] = seqs
+  #  }
+  #}
+  #if(length(age_group_names) > 1){
+  #  age_group_names[1] = paste0("<",
+  #                              age_breaks_years[2] %>%
+  #                                set_units(age_types %>% subset(. == age_breaks_types[2]) %>% names, mode = "standard"),
+  #                              age_breaks_types[2])
+  #  age_group_names[length(age_group_names)] = paste0(age_breaks_years %>% rev %>% .[1] %>%
+  #                                                      set_units(age_types %>% subset(. == age_breaks_types %>% rev %>%
+  #                                                                                       .[1]) %>% names,
+  #                                                                mode = "standard"), "+",
+  #                                                    age_breaks_types %>% rev %>% .[1])
+  #} else {
+  #  age_group_names[1] = paste0("<", maxage, "y")
+  #}
   
   age_groups = data.table(
-    name = age_group_names,
+    #name = age_group_names,
+    name = paste0(age_breaks_years, "-", c(age_breaks_years[-1], maxage)),
     from = age_breaks_years,
     to = c(age_breaks_years[-1], maxage)
   )
   
-  age_groups[, name := factor(name, age_group_names)]
+  #age_groups[, name := factor(name, age_group_names)]
+  age_groups[, name := factor(name, name)]
   
   return(age_groups)
 }
@@ -374,4 +376,66 @@ combineAgeBreaks2 = function(target, additional, method = c("mean", "sum")[1], v
   }
   
   return(rbindlist(output))
+}
+
+fillAgeGaps = function(data, min_age = set_units(0, "years"), max_age = set_units(120, "years")){
+  if(data[1, from] > min_age){
+    
+    #' create age-data for row
+    row_age_data = setAgeBreaks(min_age, minage = min_age, maxage = data[2, from])
+    
+    #' set all measurement values to NA
+    row_data = copy(data[1, -c("name", "from", "to")])
+    for(j in 1:ncol(row_data)) row_data[, j] = NA
+    
+    #' create new row
+    row_data = cbind(row_age_data, row_data)
+    
+    #' update dataset
+    data = rbind(row_data, data)
+  }
+  
+  if(data[.N, to] < max_age){
+    
+    #' create age-data for row
+    row_age_data = setAgeBreaks(data[.N, to], minage = data[.N, to], maxage = max_age)
+    
+    #' set all measurement values to NA
+    row_data = copy(data[1, -c("name", "from", "to")])
+    for(j in 1:ncol(row_data)) row_data[, j] = NA
+    
+    #' create new row
+    row_data = cbind(row_age_data, row_data)
+    
+    #' update dataset
+    data = rbind(data, row_data)
+  }
+  
+  #' N rows updated during the for-loop
+  #' - run this several times until the dataset is completed
+  updated = TRUE
+  while(updated){
+    updated = FALSE
+    for(i in 2:nrow(data)){
+      if(data[i, from] != data[i-1, to]){
+        updated = TRUE
+        
+        #' create age-data for row
+        row_age_data = setAgeBreaks(data[i-1, to], minage = data[i-1, to], maxage = data[i, from])
+        
+        #' set all measurement values to NA
+        row_data = copy(data[1, -c("name", "from", "to")])
+        for(j in 1:ncol(row_data)) row_data[, j] = NA
+        
+        #' create new row
+        row_data = cbind(row_age_data, row_data)
+        
+        #' update dataset
+        data = rbind(data[1:(i-1)], row_data, data[i:.N])
+      }
+    }
+  }
+  
+  
+  return(data)
 }

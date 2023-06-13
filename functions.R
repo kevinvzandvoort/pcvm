@@ -447,7 +447,6 @@ adjustContactMatrixAgeGroups = function(age_groups_model, contact_matrix_data, c
 }
 
 #' Get dominant eigenvalue
-#' - todo, calculate for NGM
 dominantEigenValue = function(contact_matrix){
   return(Re(eigen(contact_matrix, only.values = TRUE)[["values"]][1]))
 }
@@ -546,4 +545,27 @@ getVaccineCoverage = function(age_groups_model, age_breaks, coverage, return_tab
   
   if(return_table) return(coverage_by_age)
   else return(coverage_table[, value])
+}
+
+getVaccineCoverageRoutine = function(age_groups_model, age_breaks, coverage, return_table = FALSE){
+  if(length(coverage) == 1 & length(age_breaks) > 2){
+    warning("Applying same coverage to all age breaks provided. Consider widening the age-break provided to a single group.")
+  } else if((length(age_breaks) != length(coverage))){
+    stop("Length of coverage does not match age-breaks, and more than one coverage is specified.")
+  }
+  
+  coverage_by_age = copy(age_groups_model) %>% .[, value := 0]
+  for(i in 1:length(age_breaks)){
+    if(nrow(coverage_by_age[set_units(from, "years") == set_units(age_breaks[i], "years")]) == 0)
+      stop(sprintf("No model age group is consistent with vaccination at %s %s. Consider changing your model age groups, or the age of vaccination.", age_breaks, as.character(units(age_breaks))))
+    
+    if(length(coverage) == 1){
+      coverage_by_age[set_units(from, "years") == set_units(age_breaks[i], "years"), value := coverage]  
+    } else {
+      coverage_by_age[set_units(from, "years") == set_units(age_breaks[i], "years"), value := coverage[i]]
+    }
+  }
+  
+  if(return_table) return(coverage_by_age)
+  else return(coverage_by_age[, value])
 }
