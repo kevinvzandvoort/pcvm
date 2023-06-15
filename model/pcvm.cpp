@@ -625,7 +625,10 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
   double time = t[0];
   
   //TODO: check if this is necessary
-  if (ip[0] < 1) error("nout should be at least 1");    
+  if (ip[0] < 1) error("nout should be at least 1");
+  //if(time < 1){
+  //  Rcpp::Rcout << "DEBUG: time: " << time << "; ip[0]: " << ip[0] << std::endl;
+  //}
   
   //We loop through every cluster in the model, and update the state in each compartment. State is passed from deSolve
   // by the y array. The states are ordered as: cluster > vaccine_arm > compartment (S, VT, NVT, B) > agegroup.

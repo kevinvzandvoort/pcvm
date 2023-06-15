@@ -1,20 +1,34 @@
 library(units)
 library(data.table)
+library(magrittr)
 
+#' This function creates a data table with age groups, according to the provided age breaks
 setAgeBreaks = function(age_breaks, minage = set_units(0, "years"), maxage = set_units(120, "years")){
+  #' Helper function to check whether a value is an Integer for a given tolerance level
+  #' - alternative to the is.integer function of base R, which does not check for a specific tolerance
   isAnInteger = function(value, tol = 1/1e10){
     sapply(value, function(x, tol) (abs(as.numeric(x) - round(as.numeric(x))) < tol), tol) 
   }
   age_types = c(hours = "h", days = "d", weeks = "w", months = "m", years = "y")
   
+  #' Convert all age breaks to years, and order all unique values
   age_breaks_years = age_breaks %>% set_units("years") %>% sort %>% unique
+  
+  #' Exclude any age breaks lower than the minimum population age (default 0 years)
   age_breaks_years = age_breaks_years %>% subset(. >= minage)
+  
+  #' Add the minimum age if not included in the age breaks
   if(age_breaks_years[1] > set_units(minage, "years")) age_breaks_years = c(minage, age_breaks_years)
+  
+  #' Exclude any age breaks over the maximum age (default 120 years, will be added automatically if not present)
   age_breaks_years = age_breaks_years %>% subset(. < maxage)
   
-  #' Check if there are any groups of this type
+  #' Vector to store type of age break
   age_breaks_types = character(length(age_breaks_years))
   age_breaks_unresolved = rep(TRUE, length(age_breaks_years))
+  
+  #' loop through all age types, and assign to each age breaks
+  #' - e.g. can it be represented as an integer when represented as a year, month, week, or day?
   for(i in rev(seq_along(age_types))){
     if(sum(age_breaks_unresolved) == 0) break
     unit = names(age_types)[i]
@@ -25,12 +39,12 @@ setAgeBreaks = function(age_breaks, minage = set_units(0, "years"), maxage = set
     age_breaks_types[age_breaks_unresolved][matching_age_groups] = label
     age_breaks_unresolved = age_breaks_types == "" 
   }
-  
   if(any(age_breaks_unresolved))
     stop(sprintf("Could not resolve type of all age-breaks provided: age-breaks %s",
                  which(age_breaks_unresolved) %>% paste0(collapse = ", ")))
   
-  #' Ensure logical order
+  #' Ensure logical order of age
+  #' - make sure they are always ordered as days, weeks, months, years
   start = 1
   for(i in seq_along(age_types)){
     label = age_types[i]
@@ -41,6 +55,7 @@ setAgeBreaks = function(age_breaks, minage = set_units(0, "years"), maxage = set
     }
   }
   
+  #' assign correct label type to each age break
   prev_i = NULL
   for(i in seq_along(age_types)){
     label = age_types[i]
@@ -57,327 +72,201 @@ setAgeBreaks = function(age_breaks, minage = set_units(0, "years"), maxage = set
     }
   }
   
-  #age_group_names = character(length(age_breaks_years))
-  #for(i in seq_along(age_types)){
-  #  unit = names(age_types)[i]
-  #  label = age_types[i]
-  #  
-  #  if(!any(age_breaks_types == label)) next
-  #  
-  #  is_seq = age_breaks_years[age_breaks_types == label] %>%
-  #    set_units(unit, mode = "standard") %>% diff %>% round %>% (function(x) length(x) > 0 && as.integer(x) > 1)
-  #  if(i < length(age_types)){
-  #    is_seq_last = age_breaks_years[which(age_breaks_types == label) %>% rev %>% .[1] %>%
-  #                                     (function(x) x + c(0, 1))] %>% na.omit %>%
-  #      set_units(unit, mode = "standard") %>% diff() %>% round %>% (function(x) length(x) > 0 && as.integer(x) > 1)
-  #    is_seq = c(is_seq, is_seq_last) 
-  #  } else {
-  #    is_seq_last = FALSE
-  #  }
-  #  
-  #  if(any(!is_seq)){
-  #    no_seqs = paste0(age_breaks_years[age_breaks_types == label][which(!is_seq)] %>%
-  #                       set_units(unit, mode = "standard"), label)
-  #    age_group_names[age_breaks_types[-length(age_breaks_types)] == label][which(!is_seq)] = no_seqs
-  #  }
-  #  if(any(is_seq)){
-  #    seqs = paste0(age_breaks_years[age_breaks_types == label][which(is_seq)] %>%
-  #                    set_units(unit, mode = "standard"), "-",
-  #                  (age_breaks_years[age_breaks_types == label][1 + which(is_seq)] %>%
-  #                     set_units(unit, mode = "standard") - set_units(1, unit, mode = "standard")), label)
-  #    if(is_seq_last){
-  #      #' Really only makes sense with other labelling
-  #      last_name = paste0(age_breaks_years[age_breaks_types == label][max(which(is_seq))] %>%
-  #                           set_units(unit, mode = "standard"), label, "- <",
-  #                         age_breaks_years[which(age_breaks_types == label) %>% rev %>% .[1] + 1] %>%
-  #                           set_units(age_types %>%
-  #                                       subset(. == age_breaks_types[which(age_breaks_types == label) %>%
-  #                                                                      rev %>% .[1] + 1]) %>%
-  #                                       names, mode = "standard"),
-  #                         age_breaks_types[which(age_breaks_types == label) %>% rev %>% .[1] + 1])
-  #      ##last_name = paste0(age_breaks_years[age_breaks_types == label][max(which(is_seq))] %>%
-  #      ##                     set_units(unit, mode = "standard"), label, "-",
-  #      ##                            (age_breaks_years[which(age_breaks_types == label) %>% rev %>% .[1] + 1] %>%
-  #      ##                     set_units(unit, mode = "standard") - set_units(1, unit, mode = "standard")),
-  #      ##                   age_breaks_types[which(age_breaks_types == label) %>% rev %>% .[1] + 1])
-  #      warning(sprintf("Age-group '%s' spans a range between different types, check to make sure this is correct",
-  #                      last_name))
-  #      seqs[length(seqs)] = last_name
-  #    }
-  #    age_group_names[age_breaks_types[-length(age_breaks_types)] == label][which(is_seq)] = seqs
-  #  }
-  #}
-  #if(length(age_group_names) > 1){
-  #  age_group_names[1] = paste0("<",
-  #                              age_breaks_years[2] %>%
-  #                                set_units(age_types %>% subset(. == age_breaks_types[2]) %>% names, mode = "standard"),
-  #                              age_breaks_types[2])
-  #  age_group_names[length(age_group_names)] = paste0(age_breaks_years %>% rev %>% .[1] %>%
-  #                                                      set_units(age_types %>% subset(. == age_breaks_types %>% rev %>%
-  #                                                                                       .[1]) %>% names,
-  #                                                                mode = "standard"), "+",
-  #                                                    age_breaks_types %>% rev %>% .[1])
-  #} else {
-  #  age_group_names[1] = paste0("<", maxage, "y")
-  #}
+  #' create user-friendly name for each age group
+  age_group_names = character(length(age_breaks_years))
+  for(i in 1:length(age_breaks_years)){
+    from = age_breaks_years[i]
+    from_unit = age_breaks_types[i]
+    
+    if(i < length(age_breaks_years)){
+      to = age_breaks_years[i + 1]
+      to_unit = age_breaks_types[i + 1]
+    } else {
+      to = maxage
+      to_unit = "y"
+    }
+    
+    age_group_names[i] = sprintf("[%s%s, %s%s)", 
+                                 set_units(from, names(age_types)[which(age_types == from_unit)], mode = "standard"),
+                                 from_unit,
+                                 set_units(to, names(age_types)[which(age_types == to_unit)], mode = "standard"),
+                                 to_unit)
+    
+  }
   
+  #' Construct data table with age groups
+  #' - format can be easily read by other functions
   age_groups = data.table(
-    #name = age_group_names,
-    name = paste0(age_breaks_years, "-", c(age_breaks_years[-1], maxage)),
+    name = age_group_names,
     from = age_breaks_years,
     to = c(age_breaks_years[-1], maxage)
   )
   
-  #age_groups[, name := factor(name, age_group_names)]
-  age_groups[, name := factor(name, name)]
+  #' make name a factor for easy sorting
+  age_groups[, name := factor(name, age_group_names)]
   
-  return(age_groups)
+  return(age_groups[])
 }
 
-#' Test age breaks
-#' with b_length = a_start
-#' with b_length = 2*a_start
-#' with b_length = a_start/2
-#
-#a_start = 4
-#a_length = 2
-#a_end = a_start+a_length
-#
-#b_length = a_length*2
-#b_start = a_start - b_length - 1
-#out = list()
-#i = 1
-#
-#tol = 0.05
-#
-#gt = function(a, b){
-#  (a - b) > tol
-#}
-#lt = function(a, b){
-#  (a - b) < tol
-#}
-#
-#setPlotOption = function(data){
-#  b_start = data$start
-#  b_end = data$end
-#  #if(gt(a_start, (b_end-tol*2))){
-#  #  msg = "B fully before A"
-#  #} else if(lt(a_end-tol*2, b_start)){
-#  #  msg = "B fully after A"
-#  #} else if(lt(a_start, b_end-tol*2)) {
-#  if(!gt(a_start, b_end-tol*2) & !lt(a_end-tol*2, b_start) & lt(a_start, b_end-tol*2)){
-#    msg = "B partly/fully in A"
-#  } else {
-#    msg = "Not Yet Implemented"
-#  }
-#  data[, message := msg]
-#  return(data)
-#}
-#while(b_start <= a_end){
-#  out[[i]] = data.table(y = i, start = b_start, end = b_start + b_length)
-#  out[[i]] = setPlotOption(out[[i]])
-#  b_start = b_start + 1
-#  i = i+1
-#}
-#out[[i]] = data.table(y = i, start = b_start, end = b_start + b_length)
-#out[[i]] = setPlotOption(out[[i]])
-#ggplot(data = NULL, aes(y=y, yend=y, x=start, xend=end))+
-#  geom_segment(data = data.table(y = 0, start = a_start, end = a_end), colour="#000000", size = 1)+
-#  geom_point(data = data.table(y = 0, start = a_start, end = a_end), colour="#000000", fill="#000000", size = 2, shape = 21)+
-#  geom_point(data = data.table(y = 0, start = a_start, end = a_end), aes(x=end), colour="#000000", fill="#FFFFFF", size = 2, shape = 21)+
-#  geom_segment(data = rbindlist(out), size = 1, aes(colour=message))+
-#  geom_point(data = rbindlist(out), size = 2, shape = 21, aes(colour=message, fill=message))+
-#  geom_point(data = rbindlist(out), aes(x=end, colour=message), fill="#FFFFFF", size = 2, shape = 21)
-
-combineAgeBreaks = function(target, additional, method = c("mean", "sum")[1], value.var = "value", additional_group = NULL){
+#' combine two age breaks tables
+#' - useful to distribute data to different age groups
+#' - TODO: rewrite in cpp
+combineAgeBreaks = function(x, y, method = c("mean", "sum")[1], value.var = "value"){
   onesec = set_units(1, "second")
+  fivesec = set_units(5, "second")
   
+  #' function to check whether one age group is lower than the other
+  #' - tolerance is five seconds
   lt = function(a, b){
-    (a - b) < onesec
+    (a - b) < fivesec
   }
+  #' function to check whether one age group is greater than the other
+  #' - tolerance is five seconds
   gt = function(a, b){
-    (a - b) > onesec
+    (a - b) > fivesec
   }
   
-  #  if(any(class(target[, from], target[, to], additional[, from], additional[, to]) != "units")) stop("Need to input units")
+  x = copy(x) %>% setorder(from, to)
+  y = copy(y) %>% setorder(from, to)
   
-  if(!is.null(additional_group)){
-    groupings = additional[, additional_group, with=FALSE] %>% unique()
-    ngroups = nrow(groupings)
-  } else {
-    ngroups = 1
-  }
-  
-  output = list()
-  
-  for(g in 1:ngroups){
-    z_target = copy(target) %>% setorder(from, to)
-    if(!is.null(additional_group)){
-      z_additional = groupings[g] %>% merge(additional) %>% setorder(from, to)
-    } else {
-      z_additional = copy(additional) %>% setorder(from, to)  
+  if(any(value.var %in% colnames(x))){
+    for(val in value.var[which(value.var %in% colnames(x))]){
+      x[, paste0(val,".x") := get(val)]
+      x = x[, -val, with=FALSE]
+      
+      y[, paste0(val,".y") := get(val)]
+      y = y[, -val, with=FALSE]
+      
+      value.var[which(value.var == val)] = paste0(val, ".y") 
     }
+  }
+  
+  #' for each age group in x
+  for(a in 1:nrow(x)){
+    #' get the age groups in y that overlap with the age group in x
+    ages_that_overlap = y[(from + fivesec) <= x[a, to] & (to - fivesec) >= x[a, from]]
     
-    z_target[, row := 1:.N]
-    z_additional[, row := 1:.N]
+    #' get duration of each age group
+    dur_x = x[a, to - from]
+    dur_y = ages_that_overlap[, to - from]
     
-    first_prev = NULL
-    last_prev = NULL
-    dur_prev = NULL
-    for(a in 1:nrow(z_target)){
-      #first = first(z_additional[!gt(from, z_target[a, from]) & !lt(to - onesec, z_target[a, from]), row])
-      #last = last(z_additional[!gt(from, z_target[a, to] - onesec) & !lt(to - onesec, (z_target[a, to] - onesec)), row])
-      ages_that_overlap = z_additional[!gt(z_target[a, from], to-onesec*2) & !lt(z_target[a, to]-onesec*2, from) & lt(z_target[a, from], to-onesec*2)]
-      first = first(ages_that_overlap[, row])
-      last = last(ages_that_overlap[, row])
-      dur = z_target[a, to - from]
-      
-      if(!is.null(first_prev) & !is.null(last_prev) & !is.null(dur_prev)){
-        if(first == first_prev & last == last_prev & dur == dur_prev){
-          #can skip this iteration as values will be the same
-          for(val in value.var){
-            z_target[a, val] = z_target[a-1, get(val)]
-          }
-          next
-        }
-      }
-      
-      value_rows = first:last
-      value_duration = z_additional[value_rows, to - from]
-      value_duration[1] = min(z_additional[value_rows[1], to], z_target[a, to]) - z_target[a, from]
-      if(length(value_rows) > 1) value_duration[length(value_rows)] = z_target[a, to] - z_additional[value_rows[length(value_rows)], from]
-      
-      if(sum(value_duration) != sum(z_target[a, to - from]))
-        stop("Something went wrong - durations not equal")
-      if(any(as.numeric(value_duration/z_additional[value_rows, to - from]) > 1 | as.numeric(value_duration/z_additional[value_rows, to - from]) < 0))
-        stop("Something went wrong - duration greater than 1")
-      
+    if(identical(dur_x, dur_y)){
+      #' all are equal, value can be copied
       for(val in value.var){
-        if(method == "mean")
-          z_target[a, val] = weighted.mean(z_additional[value_rows, get(val)], as.numeric(value_duration)) 
-        else if(method == "sum")
-          z_target[a, val] = sum(as.numeric(value_duration/z_additional[value_rows, to - from]) * z_additional[value_rows, get(val)])
+        x[a, val] = ages_that_overlap[, get(val)] 
+      }
+    } else if(sum(dur_y) == dur_x){
+      #' sum is equal, value can be summed/averaged
+      if(method == "mean"){
+        for(val in value.var){
+          x[a, val] = weighted.mean(ages_that_overlap[, get(val)], w = as.numeric(dur_y))
+        }
+      } else if(method == "sum"){
+        for(val in value.var){
+          x[a, val] = sum(ages_that_overlap[, get(val)])
+        }
+      } else {
+        stop(sprintf("Method %s not yet implemented", method))
+      }
+    } else if(sum(dur_y) > dur_x){
+      #' can only use part of one age-group
+      #' age groups that are not first or last will always fully contribute
+      value_rel = rep(1, ages_that_overlap[, .N])
+      value_rel[c(1, ages_that_overlap[, .N])] = NA
+      if(ages_that_overlap[1, from] < x[a, from]){
+        #' first y age group starts before x age group
+        value_rel[1] = (ages_that_overlap[1, to - from] - (x[a, from] - ages_that_overlap[1, from]))/ages_that_overlap[1, to - from]
+      } else {
+        value_rel[1] = 1
+      }
+      if(ages_that_overlap[.N, to] > x[a, to]) {
+        value_rel[ages_that_overlap[, .N]] = (ages_that_overlap[.N, to - from] - (ages_that_overlap[.N, to] - x[a, to]))/ages_that_overlap[.N, to - from]
+      } else if(ages_that_overlap[, .N] > 1) {
+        #' if not larger than 1, already processed in the previous step
+        value_rel[ages_that_overlap[, .N]] = 1
       }
       
-      first_prev = first
-      last_prev = last
-      dur_prev = dur
-    }
-    
-    if(!is.null(additional_group)){
-      output[[g]] = z_target[, -"row"] %>% cbind(z_additional[, additional_group, with=FALSE] %>% unique)
-    } else {
-      output[[g]] = z_target[, -"row"]  
-    }
-  }
-  
-  return(rbindlist(output))
-}
-
-agelt = function(a, b){
-  onesec = set_units(1, "second")
-  return((a - b) < -onesec)
-}
-agegt = function(a, b){
-  onesec = set_units(1, "second")
-  return((a - b) > onesec)
-}
-
-matchingAgeBreaks = function(target, additional){
-  onesec = set_units(1, "second")
-  lt = function(a, b){
-    (a - b) < onesec
-  }
-  gt = function(a, b){
-    (a - b) > onesec
-  }
-  
-  z_target = copy(target) %>% setorder(from, to)
-  z_additional = copy(additional) %>% setorder(from, to)  
-    
-  z_target[, row := 1:.N]
-  z_target[, name.x := name]
-  z_additional[, row := 1:.N]
-    
-  for(a in 1:nrow(z_target)){
-    ages_that_overlap = z_additional[!gt(z_target[a, from], to-onesec*2) & !lt(z_target[a, to]-onesec*2, from) & lt(z_target[a, from], to-onesec*2)]
-    first = first(ages_that_overlap[, row])
-    last = last(ages_that_overlap[, row])
-    #first = first(z_additional[from <= z_target[a, from] & (to - onesec) >= z_target[a, from], row])
-    #last = last(z_additional[from <= (z_target[a, to] - onesec) & (to - onesec) >= (z_target[a, to] - onesec), row])
-      
-    if(first != last) stop("No unique age-breaks in y to match with x")
-    z_target[a, name.y := z_additional[first, name]]
-  }
-  
-  return(z_target[, c("name.x", "name.y")])
-}
-
-combineAgeBreaks2 = function(target, additional, method = c("mean", "sum")[1], value.var = "value", additional_group = NULL){
-  onesec = set_units(1, "second")
-  
-  lt = function(a, b){
-    (a - b) < onesec
-  }
-  gt = function(a, b){
-    (a - b) > onesec
-  }
-  
-  additional_age_groups = additional %>% .[, c("name", "from", "to")] %>% unique()
-  z_target = copy(target) %>% setorder(from, to)
-  z_target[, row := 1:.N]
-  z_additional_age_groups = copy(additional_age_groups) %>% setorder(from, to) %>% .[, row := 1:.N]
-  
-  output = list()
-  for(a in 1:nrow(z_target)){
-    ages_that_overlap = z_additional_age_groups[!gt(z_target[a, from], to-onesec*2) & !lt(z_target[a, to]-onesec*2, from) & lt(z_target[a, from], to-onesec*2)]
-    first = first(ages_that_overlap[, row])
-    last = last(ages_that_overlap[, row])
-    dur = z_target[a, to - from]
-    
-    value_rows = first:last
-    value_duration = z_additional_age_groups[value_rows, to - from]
-    value_duration[1] = min(z_additional_age_groups[value_rows[1], to], z_target[a, to]) - z_target[a, from]
-    if(length(value_rows) > 1) value_duration[length(value_rows)] = z_target[a, to] - z_additional_age_groups[value_rows[length(value_rows)], from]
-    
-    if(sum(value_duration) != sum(z_target[a, to - from]))
-      stop("Something went wrong - durations not equal")
-    if(any(as.numeric(value_duration/z_additional_age_groups[value_rows, to - from]) > 1 | as.numeric(value_duration/z_additional_age_groups[value_rows, to - from]) < 0))
-      stop("Something went wrong - duration greater than 1")
-    
-    if(method == "mean"){
-      ages_that_overlap[, weight := value_duration]  
-    } else if(method == "sum"){
-      ages_that_overlap[, weight := as.numeric(value_duration/z_additional_age_groups[value_rows, to - from])]  
-    }
-    
-    z_additional = copy(additional)
-    z_additional = z_additional %>% merge(ages_that_overlap[, c("name", "weight")], by="name")
-    
-    z_additional = value.var %>% lapply(function(val){
-      if(method == "mean")
-        tmp = z_additional[, .(val = weighted.mean(get(val), weight)), by=additional_group]
-      else if(method == "sum")
-        tmp = z_additional[, .(val = sum(get(val) * weight)), by=additional_group]
-        #z_target[a, val] = sum(as.numeric(value_duration/z_additional[value_rows, to - from]) * z_additional[value_rows, get(val)])
-      colnames(tmp)[which(colnames(tmp) == "val")] = val
-      return(tmp)
-      }) %>% (function(x){
-        tmp = x[[1]]
-        if(length(x) > 1){
-          for(i in 2:length(x)){
-            tmp %<>% merge(x[[i]], by = additional_group)
-          }
+      if(method == "mean"){
+        for(val in value.var){
+          x[a, val] = weighted.mean(ages_that_overlap[, get(val)], w = value_rel)
         }
-        return(tmp)
-      })
-    
-    output[[length(output) + 1]] = z_target[a, ] %>% cbind(z_additional) %>% .[, -"row"]
+      } else if(method == "sum"){
+        for(val in value.var){
+          x[a, val] = sum(ages_that_overlap[, get(val)] * value_rel)
+        }
+      } else {
+        stop(sprintf("Method %s not yet implemented", method))
+      }
+    } else if(sum(dur_y) < dur_x){
+      #' don't have enough data to fill age group
+      stop(sprintf("Not enough data to fill age group %s. Do you need to fillAgeGaps on y?", x[a, name]))
+    } else {
+      stop(sprintf("Unexpected error when filling value for age group %s", x[a, name]))
+    }
   }
   
-  return(rbindlist(output))
+  return(x)
 }
 
+x = c(0, 2, 4) %>% set_units("year") %>% setAgeBreaks() %>% .[, value := 1:.N] %>% .[]
+y = c(0:10) %>% set_units("year") %>% setAgeBreaks() %>% .[, value := 1:.N] %>% .[]
+combineAgeBreaks(x, y, value.var = "value")
+combineAgeBreaks(x, y, value.var = "value", method = "sum")
+combineAgeBreaks(y, x, value.var = "value")
+combineAgeBreaks(y, x, value.var = "value", method = "sum")
+
+#agelt = function(a, b){
+#  onesec = set_units(1, "second")
+#  return((a - b) < -onesec)
+#}
+#agegt = function(a, b){
+#  onesec = set_units(1, "second")
+#  return((a - b) > onesec)
+#}
+
+matchingAgeBreaks = function(x, y){
+  onesec = set_units(1, "second")
+  fivesec = set_units(5, "second")
+  
+  #' function to check whether one age group is lower than the other
+  #' - tolerance is five seconds
+  lt = function(a, b){
+    (a - b) < fivesec
+  }
+  #' function to check whether one age group is greater than the other
+  #' - tolerance is five seconds
+  gt = function(a, b){
+    (a - b) > fivesec
+  }
+  
+  x = copy(x) %>% setorder(from, to)
+  y = copy(y) %>% setorder(from, to)
+  
+  x[, row := 1:.N]
+  x[, name.x := name]
+  y[, row := 1:.N]
+  
+  for(a in 1:nrow(x)){
+    #' get the age groups in y that overlap with the age group in x
+    ages_that_overlap = y[(from + fivesec) <= x[a, to] & (to - fivesec) >= x[a, from]]
+    
+    if(ages_that_overlap[, .N] > 1) stop("More than 1 row in y to match row in x")
+    
+    #' get duration of each age group
+    dur_x = x[a, to - from]
+    dur_y = ages_that_overlap[, to - from]
+    
+    if(dur_y >= dur_x){
+      x[a, name.y := ages_that_overlap[, name]]  
+    } else {
+      stop("Age-break in y is smaller than age break in x")
+    }
+  }
+  
+  return(x[, c("name.x", "name.y")])
+}
+
+#' Fill age gaps if there are gaps between age groups in a dataset
 fillAgeGaps = function(data, min_age = set_units(0, "years"), max_age = set_units(120, "years")){
   if(data[1, from] > min_age){
     
@@ -439,3 +328,23 @@ fillAgeGaps = function(data, min_age = set_units(0, "years"), max_age = set_unit
   
   return(data)
 }
+
+#' function to check whether one age group is lower than the other
+#' - tolerance is five seconds
+agelt = function(a, b){
+  fivesec = set_units(5, "second")
+  (a - b) < fivesec
+}
+#' function to check whether one age group is greater than the other
+#' - tolerance is five seconds
+agegt = function(a, b){
+  fivesec = set_units(5, "second")
+  (a - b) > fivesec
+}
+
+ageeq = function(a, b){
+  fivesec = set_units(5, "second")
+  (b >= (a - fivesec)) & (b <= (a + fivesec))
+}
+
+

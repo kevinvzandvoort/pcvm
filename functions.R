@@ -429,7 +429,7 @@ adjustContactMatrixAgeGroups = function(age_groups_model, contact_matrix_data, c
     melt(id.vars = "contactee_age_group", variable.name = "contactor_age_group") %>%
     dcast(contactor_age_group ~ contactee_age_group) %>%
     cbind(contact_matrix_data_agegroups[, -"name"]) %>%
-    combineAgeBreaks(target = age_groups_model, additional = ., method = "mean", value.var = age_groups_model[, name]) %>%
+    combineAgeBreaks(x = age_groups_model, y = ., method = "mean", value.var = age_groups_model[, name]) %>%
     .[, -c("from", "to", "name")] %>%
     as.matrix(rownames = age_groups_model[, name]) %>%
     t()
@@ -514,58 +514,36 @@ adjustForTimeStep = function(value, MODEL_TIMESTEP.=MODEL_TIMESTEP){
   return(model_params)
 }
 
+(age_groups_model %>% combineAgeBreaks(c(set_units(6, "weeks"), set_units(5, "years")) %>% setAgeBreaks() %>%
+                                         .[, coverage := c(0, 0.8, 0)], value.var = "coverage") %>% .[, coverage])
+
 getVaccineCoverage = function(age_groups_model, age_breaks, coverage, return_table = FALSE){
-  if(length(coverage) == 1 & length(age_breaks) == 1){
-    warning("Applying same coverage to all ages.")
-  } else if(length(coverage) == 1 & length(age_breaks) > 2){
+  if(length(coverage) == 1 & length(age_breaks) > 2){
     warning("Applying same coverage to all age breaks provided. Consider widening the age-break provided to a single group.")
-  } else if((length(age_breaks) - 1 != length(coverage))){
+  } else if(length(age_breaks) != 1 & (length(age_breaks) - 1 != length(coverage))){
     stop("Length of coverage does not match age-breaks, and more than one coverage is specified.")
   }
   
-  coverage_by_age = setAgeBreaks(age_breaks) %>% .[, value := 0]
-  
   if(length(coverage) == 1 & length(age_breaks) == 1){
-    coverage_by_age[, value := coverage]
+    coverage_table = copy(age_groups_model) %>% .[, value := 0]
+    if(coverage_table[ageeq(from, age_breaks), .N] == 0 & coverage != 0){
+      stop(sprintf("Age break %s %s does not exit in age_groups_model", age_breaks, attr(age_breaks, "units")$numerator))
+    }
+    coverage_table[ageeq(from, age_breaks), value := coverage]
   } else {
+    coverage_by_age = setAgeBreaks(age_breaks) %>% .[, value := 0]
+    
     for(a in 1:(length(age_breaks)-1)){
-      if(nrow(coverage_by_age[!agelt(from, age_breaks[a]) & !agegt(to, age_breaks[a+1])]) == 0){
-        stop(sprintf("Could not find rows for age break %s %s to %s %s",
-                     age_breaks[a], attr(age_breaks[a], "units")$numerator, age_breaks[a+1], attr(age_breaks[a+1], "units")$numerator))
-      }
       if(length(coverage) == 1){
-        coverage_by_age[!agelt(from, age_breaks[a]) & !agegt(to, age_breaks[a+1]), value := coverage]
+        coverage_by_age[ageeq(from, age_breaks[a]), value := coverage]
       } else {
-        coverage_by_age[!agelt(from, age_breaks[a]) & !agegt(to, age_breaks[a+1]), value := coverage[a]]  
+        coverage_by_age[ageeq(from, age_breaks[a]), value := coverage[a]]  
       }
     }
+    
+    coverage_table = age_groups_model %>% combineAgeBreaks(coverage_by_age)
   }
-  
-  coverage_table = age_groups_model %>% combineAgeBreaks(coverage_by_age)
   
   if(return_table) return(coverage_by_age)
   else return(coverage_table[, value])
-}
-
-getVaccineCoverageRoutine = function(age_groups_model, age_breaks, coverage, return_table = FALSE){
-  if(length(coverage) == 1 & length(age_breaks) > 2){
-    warning("Applying same coverage to all age breaks provided. Consider widening the age-break provided to a single group.")
-  } else if((length(age_breaks) != length(coverage))){
-    stop("Length of coverage does not match age-breaks, and more than one coverage is specified.")
-  }
-  
-  coverage_by_age = copy(age_groups_model) %>% .[, value := 0]
-  for(i in 1:length(age_breaks)){
-    if(nrow(coverage_by_age[set_units(from, "years") == set_units(age_breaks[i], "years")]) == 0)
-      stop(sprintf("No model age group is consistent with vaccination at %s %s. Consider changing your model age groups, or the age of vaccination.", age_breaks, as.character(units(age_breaks))))
-    
-    if(length(coverage) == 1){
-      coverage_by_age[set_units(from, "years") == set_units(age_breaks[i], "years"), value := coverage]  
-    } else {
-      coverage_by_age[set_units(from, "years") == set_units(age_breaks[i], "years"), value := coverage[i]]
-    }
-  }
-  
-  if(return_table) return(coverage_by_age)
-  else return(coverage_by_age[, value])
 }
