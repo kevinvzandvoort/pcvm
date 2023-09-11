@@ -10,12 +10,12 @@ for(x in c("model", "model/build"))
   if(!dir.exists(x)) dir.create(x)
 
 #' Compile model and store in directory of parent
-if(!file.exists(sprintf("./model/build/pcvm%s", .Platform$dynlib.ext)) | PCVM_COMPILE)
-  compileModel(sprintf("%s/model/pcvm.cpp", PCVM_FOLDER), "./model/build/")
+if(!file.exists(sprintf("./model/build/pcvm%s%s", ifelse(PCVM_VERSION == 2, "2", ""), .Platform$dynlib.ext)) | PCVM_COMPILE)
+  compileModel(sprintf("%s/model/pcvm%s.cpp", PCVM_FOLDER, ifelse(PCVM_VERSION == 2, "2", "")), "./model/build/")
 
 #' Load compiled model
-dyn.load(sprintf("./model/build/pcvm%s", .Platform$dynlib.ext))
-if(is.loaded("derivs", "pcvm")){
+dyn.load(sprintf("./model/build/pcvm%s%s", ifelse(PCVM_VERSION == 2, "2", ""), .Platform$dynlib.ext))
+if(is.loaded("derivs", ifelse(PCVM_VERSION == 2, "pcvm2", "pcvm"))){
   message("PCVm succesfully loaded") 
 } else {
   stop ("PCVm is not loaded")

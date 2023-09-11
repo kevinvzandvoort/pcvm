@@ -36,16 +36,7 @@
 SEXP attribute_hidden get_deSolve_gparms_Rcpp() {
   static SEXP(*fun)() = NULL;
   if (fun == NULL)
-    fun = (SEXP(*)()) R_GetCCallable("deSolve","get_deSolve_gparms");
-  return fun();
-}
-
-//Function to return the parms list passed to rootSolve as a SEXP object
-//Nb. This requires the adapted rootSolve version
-SEXP attribute_hidden get_rootSolve_gparms_Rcpp() {
-  static SEXP(*fun)() = NULL;
-  if (fun == NULL)
-    fun = (SEXP(*)()) R_GetCCallable("rootSolve","get_rootSolve_gparms");
+    fun = (SEXP(*)()) R_GetCCallable("deSolve", "get_deSolve_gparms");
   return fun();
 }
 
@@ -53,7 +44,6 @@ SEXP attribute_hidden get_rootSolve_gparms_Rcpp() {
 extern "C" {
   void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip);
   void initmod(void (* odeparms)(int *, double *));
-  void rt_initmod(void (* odeparms)(int *, double *));
   void cleanUp();
 }
 
@@ -63,18 +53,18 @@ extern "C" {
 // stratum (diamond-shaped type SIS model).
 class TransComp{
 private:
-  arma::rowvec Sus, VT, NVT, B, N, VT_B, NVT_B, VT_NVT_B;
-  arma::rowvec dSus, dVT, dNVT, dB;
-  arma::rowvec inf_s_vt, inf_s_nvt, inf_vt_b, inf_nvt_b;
-  arma::rowvec clear_vt_s, clear_nvt_s, clear_b_vt, clear_b_nvt;
-  arma::rowvec wane_s, wane_vt, wane_nvt, wane_b;
-  arma::rowvec vac_out_s, vac_out_vt, vac_out_nvt, vac_out_b;
-  arma::rowvec age_out_s, age_out_vt, age_out_nvt, age_out_b;
-  arma::rowvec age_in_s, age_in_vt, age_in_nvt, age_in_b;
-  arma::rowvec age_in_s_vac, age_in_vt_vac, age_in_nvt_vac, age_in_b_vac;
-  arma::rowvec age_in_s_unvac, age_in_vt_unvac, age_in_nvt_unvac, age_in_b_unvac;
-  arma::rowvec mgr_out_s_vac, mgr_out_vt_vac, mgr_out_nvt_vac, mgr_out_b_vac;
-  arma::rowvec mgr_out_s_unvac, mgr_out_vt_unvac, mgr_out_nvt_unvac, mgr_out_b_unvac;
+  arma::rowvec Sus, VT, NVT, VT2, B, NVT2, N, VT_VT2, VT_VT2_B, NVT_NVT2, NVT_NVT2_B, VT_NVT_VT2_NVT2_B;
+  arma::rowvec dSus, dVT, dNVT, dVT2, dNVT2, dB;
+  arma::rowvec inf_s_vt, inf_s_nvt, inf_vt_vt2, inf_vt_b, inf_nvt_b, inf_nvt_nvt2;
+  arma::rowvec clear_vt_s, clear_nvt_s, clear_vt2_vt, clear_b_vt, clear_b_nvt, clear_nvt2_nvt;
+  arma::rowvec wane_s, wane_vt, wane_nvt, wane_vt2, wane_b, wane_nvt2;
+  arma::rowvec vac_out_s, vac_out_vt, vac_out_nvt, vac_out_vt2, vac_out_b, vac_out_nvt2;
+  arma::rowvec age_out_s, age_out_vt, age_out_nvt, age_out_vt2, age_out_b, age_out_nvt2;
+  arma::rowvec age_in_s, age_in_vt, age_in_nvt, age_in_vt2, age_in_b, age_in_nvt2;
+  arma::rowvec age_in_s_vac, age_in_vt_vac, age_in_nvt_vac, age_in_vt2_vac, age_in_b_vac, age_in_nvt2_vac;
+  arma::rowvec age_in_s_unvac, age_in_vt_unvac, age_in_nvt_unvac, age_in_vt2_unvac, age_in_b_unvac, age_in_nvt2_unvac;
+  arma::rowvec mgr_out_s_vac, mgr_out_vt_vac, mgr_out_nvt_vac, mgr_out_vt2_vac, mgr_out_b_vac, mgr_out_nvt2_vac;
+  arma::rowvec mgr_out_s_unvac, mgr_out_vt_unvac, mgr_out_nvt_unvac, mgr_out_vt2_unvac, mgr_out_b_unvac, mgr_out_nvt2_unvac;
   arma::rowvec vac_cov, vac_eff, vac_waning;
   int n_agrp;
   
@@ -85,12 +75,17 @@ public:
       vac_eff(Rcpp::as<arma::rowvec>(vac_parms["efficacy"])), vac_waning(Rcpp::as<arma::rowvec>(vac_parms["waning"]))
   {
     //Preallocate memory for efficiency
-    mgr_out_s_unvac = mgr_out_vt_unvac = mgr_out_nvt_unvac = mgr_out_b_unvac = 
-      mgr_out_s_vac = mgr_out_vt_vac = mgr_out_nvt_vac = mgr_out_b_vac = wane_s = wane_vt = wane_nvt = wane_b = vac_out_s = vac_out_vt = vac_out_nvt = vac_out_b = age_in_b =
-      age_in_nvt = age_in_vt = age_in_s = age_out_b = age_out_nvt = age_out_vt = age_out_s = inf_nvt_b =
-      inf_vt_b = inf_s_vt = inf_s_nvt = clear_vt_s = clear_nvt_s = clear_b_vt = clear_b_nvt = 
-      dSus = dVT = dNVT = dB = Sus = VT = NVT = B = VT_B = NVT_B =
-      VT_NVT_B = arma::rowvec(n_agrp, arma::fill::zeros);
+    mgr_out_s_unvac = mgr_out_vt_unvac = mgr_out_nvt_unvac = mgr_out_vt2_unvac = mgr_out_b_unvac = mgr_out_nvt2_unvac =
+      mgr_out_s_vac = mgr_out_vt_vac = mgr_out_nvt_vac = mgr_out_vt2_vac = mgr_out_b_vac = mgr_out_nvt2_vac =
+      wane_s = wane_vt = wane_nvt = wane_vt2 = wane_b = wane_nvt2 =
+      vac_out_s = vac_out_vt = vac_out_nvt = vac_out_vt2 = vac_out_b = vac_out_nvt2 =
+      age_in_s = age_in_vt = age_in_nvt = age_in_vt2 = age_in_b = age_in_nvt2 =
+      age_out_s = age_out_vt = age_out_nvt = age_out_vt2 = age_out_b = age_out_nvt2 =
+      inf_s_vt = inf_s_nvt = inf_vt_vt2 = inf_vt_b = inf_nvt_b = inf_nvt_nvt2 =
+      clear_vt_s = clear_nvt_s = clear_vt2_vt = clear_b_vt = clear_b_nvt = clear_nvt2_nvt =
+      dSus = dVT = dNVT = dVT2 = dB = dNVT2 =
+      Sus = VT = NVT = VT2 = B = NVT2 =
+      VT_VT2 = VT_VT2_B = NVT_NVT2_B = NVT_NVT2 = VT_NVT_VT2_NVT2_B = arma::rowvec(n_agrp, arma::fill::zeros);
   }
   
   //Deconstructor
@@ -103,22 +98,26 @@ public:
       Sus(a) = y[start + n_agrp * 0 + a];
       VT(a) = y[start + n_agrp * 1 + a];
       NVT(a) = y[start + n_agrp * 2 + a];
-      B(a) = y[start + n_agrp * 3 + a];
+      VT2(a) = y[start + n_agrp * 3 + a];
+      B(a) = y[start + n_agrp * 4 + a];
+      NVT2(a) = y[start + n_agrp * 5 + a];
     }
     
     //Also calculate the total number of people in all compartments, by agegroup
-    N = Sus + VT + NVT + B;
+    N = Sus + VT + NVT + VT2 + B + NVT2;
     //And the total number that carry combinations of any serotype, by agegroup
-    VT_B = VT + B;
-    NVT_B = NVT + B;
-    VT_NVT_B = VT + NVT + B;
+    // This is used in FOI. Do you want twice the increase, or assume each ST has 50% probability following contact?
+    VT_VT2_B = VT + 2.0 * VT2 + 1.0 * B;
+    NVT_NVT2_B = NVT + 2.0 * NVT2 + 1.0 * B;
+    VT_NVT_VT2_NVT2_B = VT + NVT + 2.0 * VT2 + 2.0 * NVT2 + 2.0 * B;
     
     //Set to 0 at start of new iteration
-    dSus = dVT = dNVT = dB = arma::rowvec(n_agrp, arma::fill::zeros);
+    dSus = dVT = dNVT = dVT2 = dB = dNVT2 = arma::rowvec(n_agrp, arma::fill::zeros);
   }
   
   //This function updates the population (processes ageing and migration)
-  void updateDemographics(arma::rowvec &arate, arma::rowvec &arate_corr, double N_all_ageing, arma::rowvec &mrate, arma::rowvec &vac_in_s, arma::rowvec &vac_in_vt, arma::rowvec &vac_in_nvt, arma::rowvec &vac_in_b){
+  void updateDemographics(arma::rowvec &arate, arma::rowvec &arate_corr, double N_all_ageing, arma::rowvec &mrate,
+                          arma::rowvec &vac_in_s, arma::rowvec &vac_in_vt, arma::rowvec &vac_in_nvt, arma::rowvec &vac_in_vt2, arma::rowvec &vac_in_b, arma::rowvec &vac_in_nvt2){
     // Process ageing and vaccination
     age_out_s = arate % Sus;
     //Correct ageing rates to account for age groups of different sizes (arate_corr)
@@ -141,10 +140,20 @@ public:
     age_in_nvt_unvac = age_in_nvt % (1.0 - vac_cov);
     age_in_nvt_vac = age_in_nvt % (vac_cov);
     
+    age_out_vt2 = arate % VT2;
+    age_in_vt2.subvec(1, (n_agrp-1)) = age_out_vt2.subvec(0, (n_agrp-2)) % arate_corr.subvec(1, (n_agrp-1));
+    age_in_vt2_unvac = age_in_vt2 % (1.0 - vac_cov);
+    age_in_vt2_vac = age_in_vt2 % (vac_cov);
+    
     age_out_b = arate % B;
     age_in_b.subvec(1, (n_agrp-1)) = age_out_b.subvec(0, (n_agrp-2)) % arate_corr.subvec(1, (n_agrp-1));
     age_in_b_unvac = age_in_b % (1.0 - vac_cov);
     age_in_b_vac = age_in_b % (vac_cov);
+    
+    age_out_nvt2 = arate % NVT2;
+    age_in_nvt2.subvec(1, (n_agrp-1)) = age_out_nvt2.subvec(0, (n_agrp-2)) % arate_corr.subvec(1, (n_agrp-1));
+    age_in_nvt2_unvac = age_in_nvt2 % (1.0 - vac_cov);
+    age_in_nvt2_vac = age_in_nvt2 % (vac_cov);
     
     // Unvaccinated/Vaccinated individuals who migrate out
     mgr_out_s_unvac = (Sus - age_out_s + age_in_s_unvac) % mrate;
@@ -153,14 +162,20 @@ public:
     mgr_out_vt_vac = age_in_vt_vac % mrate;
     mgr_out_nvt_unvac = (NVT - age_out_nvt + age_in_nvt_unvac) % mrate;
     mgr_out_nvt_vac = age_in_nvt_vac % mrate;
+    mgr_out_vt2_unvac = (VT2 - age_out_vt2 + age_in_vt2_unvac) % mrate;
+    mgr_out_vt2_vac = age_in_vt2_vac % mrate; 
     mgr_out_b_unvac = (B - age_out_b + age_in_b_unvac) % mrate;
     mgr_out_b_vac = age_in_b_vac % mrate; 
+    mgr_out_nvt2_unvac = (NVT2 - age_out_nvt2 + age_in_nvt2_unvac) % mrate;
+    mgr_out_nvt2_vac = age_in_nvt2_vac % mrate; 
     
     // vaccinated individuals who do not migrate out (assigned to next arm in this cluster)
     age_in_s_vac = age_in_s_vac % (1.0 - mrate);
     age_in_vt_vac = age_in_vt_vac % (1.0 - mrate);
     age_in_nvt_vac = age_in_nvt_vac % (1.0 - mrate);
+    age_in_vt2_vac = age_in_vt2_vac % (1.0 - mrate);
     age_in_b_vac = age_in_b_vac % (1.0 - mrate);
+    age_in_nvt2_vac = age_in_nvt2_vac % (1.0 - mrate);
     
     //The change in states with ageing, in-migration, and in-vaccination, but without in-migration  
     //Those who are vaccinated will move to next arm
@@ -168,8 +183,9 @@ public:
     dSus += Sus % (-arate -mrate +arate % mrate) + (1.0 - mrate) % age_in_s_unvac +vac_in_s;
     dVT += VT % (-arate -mrate +arate % mrate) + (1.0 - mrate) % age_in_vt_unvac +vac_in_vt;
     dNVT += NVT % (-arate -mrate +arate % mrate) + (1.0 - mrate) % age_in_nvt_unvac +vac_in_nvt;
+    dVT2 += VT2 % (-arate -mrate +arate % mrate) + (1.0 - mrate) % age_in_vt2_unvac +vac_in_vt2;
     dB += B % (-arate -mrate +arate % mrate) + (1.0 - mrate) % age_in_b_unvac +vac_in_b;
-    
+    dNVT2 += NVT2 % (-arate -mrate +arate % mrate) + (1.0 - mrate) % age_in_nvt2_unvac +vac_in_nvt2;
   }
   
   //This function actually calculates the ODEs
@@ -182,78 +198,116 @@ public:
     Sus += dSus;
     VT += dVT;
     NVT += dNVT;
+    VT2 += dVT2;
     B += dB;
+    NVT2 += dNVT2;
     
     //Infections from S to VT and NVT (note FOI values already account for travel between clusters)
     inf_s_vt =  foi_vt  % (1.0 - vac_eff) % Sus;
     inf_s_nvt = foi_nvt % Sus;
     
+    //Superinfections from VT to VT2
+    //Nb. technically people are themselves included in proportion of contacts that are carriers
+    // but they are not in number of contacts made per unit time. Assume it is negligible and people
+    // can't infect themselves
+    inf_vt_vt2 = comp * foi_vt  % (1.0 - vac_eff) % VT;
+    
     //Superinfections from VT and NVT to B
     inf_vt_b =  comp * foi_nvt % VT;
     inf_nvt_b = comp * foi_vt  % (1.0 - vac_eff) % NVT;
+    
+    //Superinfections from NVT to NVT2
+    inf_nvt_nvt2 = comp * foi_nvt % NVT;
     
     //Clearance of carriage from VT and NVT to S
     clear_vt_s =  crate_vt  % VT;
     clear_nvt_s = crate_nvt % NVT;
     
+    //Clearance of superinfection from VT2 to VT
+    clear_vt2_vt =  2.0 * crate_vt % VT2;
+    
     //Clearance of superinfection from B to VT and NVT
     clear_b_vt =  crate_nvt % B;
     clear_b_nvt = crate_vt  % B;
+    
+    //Clearance of superinfection from NVT2 to NVT
+    clear_nvt2_nvt = 2.0 * crate_nvt % NVT2;
     
     //Total number whose vaccine protection wanes (these will move back to the unvaccinated stratum in this cluster)
     wane_s = vac_waning % Sus;
     wane_vt = vac_waning % VT;
     wane_nvt = vac_waning % NVT;
+    wane_vt2 = vac_waning % VT2;
     wane_b = vac_waning % B;
+    wane_nvt2 = vac_waning % NVT2;
     
     //All rates are then combined to calculate to add to each ODE. Note, rates for those with waning vaccine protection flowing
-    // back into the first stratum (unvaccinated) is added to these ODEs by the updateDerivs() function
+    // back into the first stratum (unvaccinated) are added to these ODEs by the updateDerivs() function
     dSus += -(inf_s_vt+inf_s_nvt) +(clear_vt_s+clear_nvt_s) -wane_s;
-    dVT += +inf_s_vt -inf_vt_b +clear_b_vt -clear_vt_s -wane_vt;
-    dNVT += +inf_s_nvt -inf_nvt_b +clear_b_nvt -clear_nvt_s -wane_nvt;
+    dVT += +inf_s_vt -(inf_vt_vt2+inf_vt_b) +(clear_vt2_vt+clear_b_vt) -clear_vt_s -wane_vt;
+    dNVT += +inf_s_nvt -(inf_nvt_b+inf_nvt_nvt2) +(clear_b_nvt+clear_nvt2_nvt) -clear_nvt_s -wane_nvt;
+    dVT2 += +inf_vt_vt2 -clear_vt2_vt -wane_vt2;
     dB += +(inf_vt_b+inf_nvt_b) -(clear_b_vt+clear_b_nvt) -wane_b;
+    dNVT2 += +inf_nvt_nvt2 -clear_nvt2_nvt -wane_nvt2;
   }
   
   //This function updates the ODEs calculated by the calculateDerivs() function by adding the rates for those with 
   // waning vaccine protection flowing back into the first stratum (unvaccinated)
-  void updateDerivs(arma::rowvec &delta_Sus, arma::rowvec &delta_VT, arma::rowvec &delta_NVT, arma::rowvec &delta_B){
+  void updateDerivs(arma::rowvec &delta_Sus, arma::rowvec &delta_VT, arma::rowvec &delta_NVT, arma::rowvec &delta_VT2, arma::rowvec &delta_B, arma::rowvec &delta_NVT2){
     dSus += delta_Sus;
     dVT += delta_VT;
     dNVT += delta_NVT;
+    dVT2 += delta_VT2;
     dB += delta_B;
+    dNVT2 += delta_NVT2;
   }
   
   //Getter functions to return private variables. Note all return values are passed by reference!
   arma::rowvec& get_inf_s_vt(){ return inf_s_vt; }
   arma::rowvec& get_inf_s_nvt(){ return inf_s_nvt; }
+  arma::rowvec& get_inf_vt_vt2(){ return inf_vt_vt2; }
   arma::rowvec& get_inf_vt_b(){ return inf_vt_b; }
   arma::rowvec& get_inf_nvt_b(){ return inf_nvt_b; }
-  arma::rowvec& getVT_B(){ return VT_B; }
-  arma::rowvec& getNVT_B(){ return NVT_B; }
+  arma::rowvec& get_inf_nvt_nvt2(){ return inf_nvt_nvt2; }
+  arma::rowvec& getVT_VT2(){ return VT_VT2; }
+  arma::rowvec& getVT_VT2_B(){ return VT_VT2_B; }
+  arma::rowvec& getNVT_NVT2(){ return NVT_NVT2; }
+  arma::rowvec& getNVT_NVT2_B(){ return NVT_NVT2_B; }
+  arma::rowvec& getVT_NVT_VT2_NVT2_B(){ return VT_NVT_VT2_NVT2_B; }
   arma::rowvec& getN(){ return N; }
   arma::rowvec& getdSus(){ return dSus; }
   arma::rowvec& getdVT(){ return dVT; }
   arma::rowvec& getdNVT(){ return dNVT; }
+  arma::rowvec& getdVT2(){ return dVT2; }
   arma::rowvec& getdB(){ return dB; }
+  arma::rowvec& getdNVT2(){ return dNVT2; }
   arma::rowvec& get_vac_out_s(){ return age_in_s_vac; }
   arma::rowvec& get_vac_out_vt(){ return age_in_vt_vac; }
   arma::rowvec& get_vac_out_nvt(){ return age_in_nvt_vac; }
+  arma::rowvec& get_vac_out_vt2(){ return age_in_vt2_vac; }
   arma::rowvec& get_vac_out_b(){ return age_in_b_vac; }
+  arma::rowvec& get_vac_out_nvt2(){ return age_in_nvt2_vac; }
   arma::rowvec& get_wane_s(){ return wane_s; }
   arma::rowvec& get_wane_vt(){ return wane_vt; }
   arma::rowvec& get_wane_nvt(){ return wane_nvt; }
+  arma::rowvec& get_wane_vt2(){ return wane_vt2; }
   arma::rowvec& get_wane_b(){ return wane_b; }
+  arma::rowvec& get_wane_nvt2(){ return wane_nvt2; }
   arma::rowvec& get_migr_s_unvac(){ return mgr_out_s_unvac; }
   arma::rowvec& get_migr_s_vac(){ return mgr_out_s_vac; }
   arma::rowvec& get_migr_vt_unvac(){ return mgr_out_vt_unvac; }
   arma::rowvec& get_migr_vt_vac(){ return mgr_out_vt_vac; }
   arma::rowvec& get_migr_nvt_unvac(){ return mgr_out_nvt_unvac; }
   arma::rowvec& get_migr_nvt_vac(){ return mgr_out_nvt_vac; }
+  arma::rowvec& get_migr_vt2_unvac(){ return mgr_out_vt2_unvac; }
+  arma::rowvec& get_migr_vt2_vac(){ return mgr_out_vt2_vac; }
   arma::rowvec& get_migr_b_unvac(){ return mgr_out_b_unvac; }
   arma::rowvec& get_migr_b_vac(){ return mgr_out_b_vac; }
+  arma::rowvec& get_migr_nvt2_unvac(){ return mgr_out_nvt2_unvac; }
+  arma::rowvec& get_migr_nvt2_vac(){ return mgr_out_nvt2_vac; }
   
   //Getter function for the total number of carriers (with any serotype) by agegroup
-  arma::rowvec& getCarriers(){ return VT_NVT_B; }
+  arma::rowvec& getCarriers(){ return VT_NVT_VT2_NVT2_B; }
 };
 
 //A Cluster object represents an individual cluster or arm in the trial. It will hold multiple vaccinated strata
@@ -271,22 +325,24 @@ private:
   arma::rowvec adj_acq_vt_on, adj_acq_nvt_on;
   arma::rowvec adj_acq_vt_off, adj_acq_nvt_off;
   double adj_acq_start, adj_acq_stop;
-  arma::rowvec population_size, N, VT_B, NVT_B, prev_vt, prev_nvt, foi_vt, foi_nvt;
+  arma::rowvec population_size, N, VT_VT2_B, NVT_NVT2_B, prev_vt, prev_nvt, foi_vt, foi_nvt;
   arma::rowvec population_change;
   double N_ageing;
   arma::mat travel, migration;
-  arma::rowvec vac_out_s, vac_out_vt, vac_out_nvt, vac_out_b;
-  arma::rowvec mgr_out_s, mgr_out_vt, mgr_out_nvt, mgr_out_b;
-  arma::rowvec mgr_out_s_cl, mgr_out_vt_cl, mgr_out_nvt_cl, mgr_out_b_cl;
-  arma::rowvec wane_s, wane_vt, wane_nvt, wane_b;
+  arma::rowvec vac_out_s, vac_out_vt, vac_out_nvt, vac_out_vt2, vac_out_b, vac_out_nvt2;
+  arma::rowvec mgr_out_s, mgr_out_vt, mgr_out_nvt, mgr_out_vt2, mgr_out_b, mgr_out_nvt2;
+  arma::rowvec mgr_out_s_cl, mgr_out_vt_cl, mgr_out_nvt_cl, mgr_out_vt2_cl, mgr_out_b_cl, mgr_out_nvt2_cl;
+  arma::rowvec wane_s, wane_vt, wane_nvt, wane_vt2, wane_b, wane_nvt2;
   std::vector<arma::rowvec> mrates;
   arma::rowvec mrates_total;
 public:
   //Constructor
   Cluster(int n_agrp, Rcpp::List parms, int c)
     : n_agrp(n_agrp), comp(parms["comp"]),
-      crate_vt(Rcpp::as<arma::rowvec>(parms["clearVT"])), crate_nvt(Rcpp::as<arma::rowvec>(parms["clearNVT"])),
-      arate(Rcpp::as<arma::rowvec>(parms["ageout"])), travel(Rcpp::as<arma::mat>(parms["travel"])),
+      crate_vt(Rcpp::as<arma::rowvec>(parms["clearVT"])),
+      crate_nvt(Rcpp::as<arma::rowvec>(parms["clearNVT"])),
+      arate(Rcpp::as<arma::rowvec>(parms["ageout"])),
+      travel(Rcpp::as<arma::mat>(parms["travel"])),
       migration(Rcpp::as<arma::mat>(parms["migration"]))
   {
     //We take the total number of required vaccinated strata from the trial_arms element in the parms list passed to
@@ -352,10 +408,13 @@ public:
     }
     
     //We preallocate memory for some variables for efficiency
-    deqs_all = incidence_all = arma::rowvec(4 * n_agrp *vac_strata.size(), arma::fill::zeros);
-    deqs = incidence = arma::rowvec(4 * n_agrp, arma::fill::zeros);
-    wane_s = wane_vt = wane_nvt = wane_b = prev_vt = prev_nvt = foi_vt = foi_nvt = vac_out_s = vac_out_vt =
-      vac_out_nvt = vac_out_b = mgr_out_s = mgr_out_vt = mgr_out_nvt = mgr_out_b = mgr_out_s_cl = mgr_out_vt_cl = mgr_out_nvt_cl = mgr_out_b_cl = arma::rowvec(n_agrp, arma::fill::zeros);
+    deqs_all = incidence_all = arma::rowvec(6 * n_agrp *vac_strata.size(), arma::fill::zeros);
+    deqs = incidence = arma::rowvec(6 * n_agrp, arma::fill::zeros);
+    wane_s = wane_vt = wane_nvt = wane_vt2 = wane_b = wane_nvt2 =
+      prev_vt = prev_nvt = foi_vt = foi_nvt =
+      vac_out_s = vac_out_vt = vac_out_nvt = vac_out_vt2 = vac_out_b = vac_out_nvt2 =
+      mgr_out_s = mgr_out_vt = mgr_out_nvt = mgr_out_vt2 = mgr_out_b = mgr_out_nvt2 = 
+      mgr_out_s_cl = mgr_out_vt_cl = mgr_out_nvt_cl = mgr_out_vt2_cl = mgr_out_b_cl = mgr_out_nvt2_cl = arma::rowvec(n_agrp, arma::fill::zeros);
     N_ageing = 0.0;
     
   }
@@ -383,13 +442,13 @@ public:
   // in one long array. *y points to the address of the first value.
   int setState(double *y, int start){
     for(int t=0; t < vac_strata.size(); t++){
-      vac_strata[t].setState(y, start + n_agrp * 4 * t);
+      vac_strata[t].setState(y, start + n_agrp * 6 * t);
     }
     
     //also make sure incidence is empty
-    incidence_all = arma::rowvec(4 * n_agrp *vac_strata.size(), arma::fill::zeros);
+    incidence_all = arma::rowvec(6 * n_agrp *vac_strata.size(), arma::fill::zeros);
     
-    return vac_strata.size() * 4 * n_agrp;
+    return vac_strata.size() * 6 * n_agrp;
   }
   
   //This function returns the total number of carriers by age, aggregated over all vaccine strata in this arm
@@ -402,19 +461,19 @@ public:
   }
   
   void calculatePrev(){
-    N = VT_B = NVT_B = arma::rowvec(n_agrp, arma::fill::zeros);
+    N = VT_VT2_B = NVT_NVT2_B = arma::rowvec(n_agrp, arma::fill::zeros);
     
     //We need to know VT (including B) and NVT (including B) prevalence in all vaccine strata in this arm
     for(int t=0; t < vac_strata.size(); t++){
       N += vac_strata[t].getN();
-      VT_B += vac_strata[t].getVT_B();
-      NVT_B += vac_strata[t].getNVT_B();
+      VT_VT2_B += vac_strata[t].getVT_VT2_B();
+      NVT_NVT2_B += vac_strata[t].getNVT_NVT2_B();
     }
     //We are already modelling proportions, so shouldn't divide by N
     //prev_vt = (VT_B);
     //prev_nvt = (NVT_B);
-    prev_vt = (VT_B);
-    prev_nvt = (NVT_B);
+    prev_vt = (VT_VT2_B);
+    prev_nvt = (NVT_NVT2_B);
   }
   
   arma::rowvec& getPrevVT(){ return prev_vt; }
@@ -432,8 +491,8 @@ public:
 
       if(t == 0){
         //No vaccinated individuals move into the first stratum (unvaccinated).
-        vac_out_s = vac_out_vt = vac_out_nvt = vac_out_b = arma::rowvec(n_agrp, arma::fill::zeros);
-        mgr_out_s = mgr_out_vt = mgr_out_nvt = mgr_out_b = arma::rowvec(n_agrp, arma::fill::zeros);
+        vac_out_s = vac_out_vt = vac_out_nvt = vac_out_vt2 = vac_out_b = vac_out_nvt2 = arma::rowvec(n_agrp, arma::fill::zeros);
+        mgr_out_s = mgr_out_vt = mgr_out_nvt = mgr_out_vt2 = mgr_out_b = mgr_out_nvt2 = arma::rowvec(n_agrp, arma::fill::zeros);
         //Newborns are all born into the first stratum (unvaccinated), and calculated as a proportion of all those who
         // age in all strata (N_ageing).
         N_ageing = N(n_agrp -1);
@@ -442,24 +501,30 @@ public:
         vac_out_s = vac_strata[t-1].get_vac_out_s();
         vac_out_vt = vac_strata[t-1].get_vac_out_vt();
         vac_out_nvt = vac_strata[t-1].get_vac_out_nvt();
+        vac_out_vt2 = vac_strata[t-1].get_vac_out_vt2();
         vac_out_b = vac_strata[t-1].get_vac_out_b();
+        vac_out_nvt2 = vac_strata[t-1].get_vac_out_nvt2();
         //No newborns enter the vaccinated strata.
         N_ageing = 0.0;
         //Migrate who are vaccinated
         mgr_out_s = vac_strata[t-1].get_migr_s_vac();
         mgr_out_vt = vac_strata[t-1].get_migr_vt_vac();
         mgr_out_nvt = vac_strata[t-1].get_migr_nvt_vac();
+        mgr_out_vt2 = vac_strata[t-1].get_migr_vt2_vac();
         mgr_out_b = vac_strata[t-1].get_migr_b_vac();
+        mgr_out_nvt2 = vac_strata[t-1].get_migr_nvt2_vac();
       }
 
       //We update the derivatives for this specific stratum through the calculateDerivs() function.
-      vac_strata[t].updateDemographics(arate, arate_corr, N_ageing, mrates_total, vac_out_s, vac_out_vt, vac_out_nvt, vac_out_b);
+      vac_strata[t].updateDemographics(arate, arate_corr, N_ageing, mrates_total, vac_out_s, vac_out_vt, vac_out_nvt, vac_out_vt2, vac_out_b, vac_out_nvt2);
       
       //Also add those migrating but not vaccinated (remain in this arm in other cluster)
       mgr_out_s += vac_strata[t].get_migr_s_unvac();
       mgr_out_vt += vac_strata[t].get_migr_vt_unvac();
       mgr_out_nvt += vac_strata[t].get_migr_nvt_unvac();
+      mgr_out_vt2 += vac_strata[t].get_migr_vt2_unvac();
       mgr_out_b += vac_strata[t].get_migr_b_unvac();
+      mgr_out_nvt2 += vac_strata[t].get_migr_nvt2_unvac();
       
       for(int j=0; j<n_clus; j++){
         
@@ -471,33 +536,39 @@ public:
         mgr_out_s_cl = mgr_out_s % (mrates[j] / mrates_total);
         mgr_out_vt_cl = mgr_out_vt % (mrates[j] / mrates_total);
         mgr_out_nvt_cl = mgr_out_nvt % (mrates[j] / mrates_total);
+        mgr_out_vt2_cl = mgr_out_vt2 % (mrates[j] / mrates_total);
         mgr_out_b_cl = mgr_out_b % (mrates[j] / mrates_total);
+        mgr_out_nvt2_cl = mgr_out_nvt2 % (mrates[j] / mrates_total);
         
         //Adjust as population size may differ
         mgr_out_s_cl = mgr_out_s_cl / mrates[j];
         mgr_out_vt_cl = mgr_out_vt_cl / mrates[j];
         mgr_out_nvt_cl = mgr_out_nvt_cl / mrates[j];
+        mgr_out_vt2_cl = mgr_out_vt2_cl / mrates[j];
         mgr_out_b_cl = mgr_out_b_cl / mrates[j];
+        mgr_out_nvt2_cl = mgr_out_nvt2_cl / mrates[j];
         
-        clusters[j]->addMigrants(c, t, mgr_out_s_cl, mgr_out_vt_cl, mgr_out_nvt_cl, mgr_out_b_cl);
+        clusters[j]->addMigrants(c, t, mgr_out_s_cl, mgr_out_vt_cl, mgr_out_nvt_cl, mgr_out_vt2_cl, mgr_out_b_cl, mgr_out_nvt2_cl);
       }
       
     }
   }
   
-  void addMigrants(int origin, int t, arma::rowvec &delta_Sus, arma::rowvec &delta_VT, arma::rowvec &delta_NVT, arma::rowvec &delta_B){
+  void addMigrants(int origin, int t, arma::rowvec &delta_Sus, arma::rowvec &delta_VT, arma::rowvec &delta_NVT, arma::rowvec &delta_VT2, arma::rowvec &delta_B, arma::rowvec &delta_NVT2){
     
     //rates are multiplied by mrate for this cluster, to keep population sizes constant
     arma::rowvec delta_Sus_adj = delta_Sus % mrates[origin];
     arma::rowvec delta_VT_adj = delta_VT % mrates[origin];
     arma::rowvec delta_NVT_adj = delta_NVT % mrates[origin];
+    arma::rowvec delta_VT2_adj = delta_VT2 % mrates[origin];
     arma::rowvec delta_B_adj = delta_B % mrates[origin];
+    arma::rowvec delta_NVT2_adj = delta_NVT2 % mrates[origin];
     
-    updateDerivsArm(t, delta_Sus_adj, delta_VT_adj, delta_NVT_adj, delta_B_adj);
+    updateDerivsArm(t, delta_Sus_adj, delta_VT_adj, delta_NVT_adj, delta_VT2_adj, delta_B_adj, delta_NVT2_adj);
   }
   
-  void updateDerivsArm(int t, arma::rowvec &delta_Sus, arma::rowvec &delta_VT, arma::rowvec &delta_NVT, arma::rowvec &delta_B){
-    vac_strata[t].updateDerivs(delta_Sus, delta_VT, delta_NVT, delta_B);
+  void updateDerivsArm(int t, arma::rowvec &delta_Sus, arma::rowvec &delta_VT, arma::rowvec &delta_NVT, arma::rowvec &delta_VT2, arma::rowvec &delta_B, arma::rowvec &delta_NVT2){
+    vac_strata[t].updateDerivs(delta_Sus, delta_VT, delta_NVT, delta_VT2, delta_B, delta_NVT2);
   }
   
   //This function calculates the derivatives in all vaccine strata within this arm
@@ -523,7 +594,7 @@ public:
     //foi_nvt = trans( beta_nvt * trans(prev_nvt_calc % (time >= adj_acq_start && time < adj_acq_stop ? adj_acq_nvt_on : adj_acq_nvt_off)) );
     
     //Loop through all vaccine strata to calculate the derivatives at this timestep
-    wane_s = wane_vt = wane_nvt = wane_b = arma::rowvec(n_agrp, arma::fill::zeros);
+    wane_s = wane_vt = wane_nvt = wane_vt2 = wane_b = wane_nvt2 = arma::rowvec(n_agrp, arma::fill::zeros);
     for(int t=0; t < vac_strata.size(); t++){
       //We calculate the derivatives for this specific stratum through the calculateDerivs() function.
       vac_strata[t].calculateDerivs(foi_vt, foi_nvt, comp, crate_vt, crate_nvt);
@@ -531,22 +602,44 @@ public:
       wane_s += vac_strata[t].get_wane_s();
       wane_vt += vac_strata[t].get_wane_vt();
       wane_nvt += vac_strata[t].get_wane_nvt();
+      wane_vt2 += vac_strata[t].get_wane_vt2();
       wane_b += vac_strata[t].get_wane_b();
+      wane_nvt2 += vac_strata[t].get_wane_nvt2();
     }
     //All individuals whose vaccine efficacy has waned are added to the first stratum (unvaccinated), through the
     // updateDerivs() function
-    vac_strata[0].updateDerivs(wane_s, wane_vt, wane_nvt, wane_b);
+    vac_strata[0].updateDerivs(wane_s, wane_vt, wane_nvt, wane_vt2, wane_b, wane_nvt2);
   }
   
   //This function gets the derivatives from all strata, and returns them as one long vector.
   arma::rowvec& getDerivs(){
+    //Rcpp::Rcout << "DEBUG: inside getDerivs function " << std::endl;
+    //std::this_thread::sleep_for(std::chrono::milliseconds(500));
     for(int t=0; t < vac_strata.size(); t++){
+      //Rcpp::Rcout << "DEBUG: start for t: " << t << std::endl;
+      //std::this_thread::sleep_for(std::chrono::milliseconds(500));
       deqs.subvec(0 + n_agrp*0, (n_agrp+n_agrp*0 - 1)) = vac_strata[t].getdSus();
+      //Rcpp::Rcout << "DEBUG: S: " << t << std::endl;
+      //std::this_thread::sleep_for(std::chrono::milliseconds(500));
       deqs.subvec(0 + n_agrp*1, (n_agrp+n_agrp*1 - 1)) = vac_strata[t].getdVT();
+      //Rcpp::Rcout << "DEBUG: VT: " << t << std::endl;
+      //std::this_thread::sleep_for(std::chrono::milliseconds(500));
       deqs.subvec(0 + n_agrp*2, (n_agrp+n_agrp*2 - 1)) = vac_strata[t].getdNVT();
-      deqs.subvec(0 + n_agrp*3, (n_agrp+n_agrp*3 - 1)) = vac_strata[t].getdB();
-      deqs_all.subvec(0 + 4*n_agrp*t, (4*n_agrp + 4*n_agrp*t - 1)) = deqs;
+      //Rcpp::Rcout << "DEBUG: NVT: " << t << std::endl;
+      //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      deqs.subvec(0 + n_agrp*3, (n_agrp+n_agrp*3 - 1)) = vac_strata[t].getdVT2();
+      //Rcpp::Rcout << "DEBUG: VT2: " << t << std::endl;
+      //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      deqs.subvec(0 + n_agrp*4, (n_agrp+n_agrp*4 - 1)) = vac_strata[t].getdB();
+      //Rcpp::Rcout << "DEBUG: B: " << t << std::endl;
+      //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      deqs.subvec(0 + n_agrp*5, (n_agrp+n_agrp*5 - 1)) = vac_strata[t].getdNVT2();
+      //Rcpp::Rcout << "DEBUG: NVT2: " << t << std::endl;
+      //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      deqs_all.subvec(0 + 6*n_agrp*t, (6*n_agrp + 6*n_agrp*t - 1)) = deqs;
     }
+    //Rcpp::Rcout << "DEBUG: finish getDerivs function " << std::endl;
+    //std::this_thread::sleep_for(std::chrono::milliseconds(500));
     return deqs_all;
   }
   
@@ -555,10 +648,12 @@ public:
     for(int t=0; t < vac_strata.size(); t++){
       incidence.subvec(0 + n_agrp*0, (n_agrp+n_agrp*0 - 1)) = vac_strata[t].get_inf_s_vt();
       incidence.subvec(0 + n_agrp*1, (n_agrp+n_agrp*1 - 1)) = vac_strata[t].get_inf_s_nvt();
-      incidence.subvec(0 + n_agrp*2, (n_agrp+n_agrp*2 - 1)) = vac_strata[t].get_inf_vt_b();
-      incidence.subvec(0 + n_agrp*3, (n_agrp+n_agrp*3 - 1)) = vac_strata[t].get_inf_nvt_b();
+      incidence.subvec(0 + n_agrp*2, (n_agrp+n_agrp*2 - 1)) = vac_strata[t].get_inf_vt_vt2();
+      incidence.subvec(0 + n_agrp*3, (n_agrp+n_agrp*3 - 1)) = vac_strata[t].get_inf_vt_b();
+      incidence.subvec(0 + n_agrp*4, (n_agrp+n_agrp*4 - 1)) = vac_strata[t].get_inf_nvt_b();
+      incidence.subvec(0 + n_agrp*5, (n_agrp+n_agrp*5 - 1)) = vac_strata[t].get_inf_nvt_nvt2();
       //Calculate cumulative incidence
-      incidence_all.subvec(0 + 4*n_agrp*t, (4*n_agrp + 4*n_agrp*t - 1)) = incidence;//+= incidence;
+      incidence_all.subvec(0 + 6*n_agrp*t, (6*n_agrp + 6*n_agrp*t - 1)) = incidence;//+= incidence;
     }
     return incidence_all;
   }
@@ -616,41 +711,6 @@ void initmod(void (* odeparms)(int *, double *)) {
   }
 }
 
-//This function sets the model up, and stores the parameter values in memory. It is only called once when setting up
-// the model
-void rt_initmod(void (* odeparms)(int *, double *)) {
-  //We get the parms argument passed to deSolve as SEXP object
-  SEXP sparms = get_rootSolve_gparms_Rcpp();
-  
-  try {
-    //Parse parameters passed to deSolve as Rcpp::List
-    Rcpp::List parms = Rcpp::clone(Rcpp::as<Rcpp::List>(sparms));
-    
-    //Define the number of trial arms/clusters and agegroups from parameter list passed to deSolve
-    n_clus = Rcpp::as<Rcpp::List>(parms["trial_arms"]).size();
-    if(n_clus == 0) n_clus = 1;
-    n_agrp = parms["n_agrp"];
-    
-    //We can't do garbage collection at end of model run in deSolve, so we do it if the same DLL/SO is still loaded
-    // and deSolve is ran again
-    clusters.clear();
-    
-    //We create a new Cluster object for every arm in the trial, and store a pointer to it in the clusters vector
-    for(int c = 0; c < n_clus; c++){
-      clusters.emplace_back(std::make_unique<Cluster>(n_agrp, parms, c));
-    }
-    
-    //Now all cluster objects exist, process the migration rates so these are consistent with the population size
-    for(int c = 0; c < n_clus; c++){
-      clusters[c]->setMigrationRates(n_clus, c, clusters);
-    }
-  } catch(std::exception& __ex__){
-    forward_exception_to_r(__ex__);
-  } catch(...){
-    ::Rf_error( "c++ exception (unknown reason)" );
-  }
-}
-
 void cleanUp() {
   for(int c = 0; c < clusters.size(); c++){
     //delete clusters[c];
@@ -696,7 +756,7 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
     n_carr += arma::accu(clusters[c]->getCarriers());
   }
   
-  //Only continue with the model if the total number of carriers is larger than 2
+  //Only continue with the model if the total number of carriers is larger than 0
   if(n_carr > 0){
     //We calculate the ODEs within all clusters, which is done in the calculateDerivs() function
     for(int c = 0; c < n_clus; c++){
@@ -705,8 +765,11 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
     
     //We return the model output to deSolve by copying the model output in the ydot array. The states are ordered
     // as: cluster > vaccine_arm > compartment (S, VT, NVT, B) > agegroup.
+    //Rcpp::Rcout << "DEBUG: getDerivs" << std::endl;
     int i = 0;
     for(int c = 0; c < n_clus; c++){
+      //Rcpp::Rcout << "DEBUG: getDerivs c: " << c << std::endl;
+      //std::this_thread::sleep_for(std::chrono::milliseconds(500));
       arma::rowvec deqs = clusters[c]->getDerivs();
       for(int d = 0; d < deqs.size(); d++){
         ydot[i] = deqs(d);
@@ -720,7 +783,7 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
     }
   }
   
-  //Additional return value to deSolve, not used. TODO: check if this is necessary
+  //Return incidence values only if requested
   if (ip[0] > 1){
     int i = 0;
     for(int c = 0; c < n_clus; c++){

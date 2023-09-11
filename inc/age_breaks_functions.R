@@ -111,118 +111,43 @@ setAgeBreaks = function(age_breaks, minage = set_units(0, "years"), maxage = set
 #' combine two age breaks tables
 #' - useful to distribute data to different age groups
 #' - TODO: rewrite in cpp
-combineAgeBreaks = function(x, y, method = c("mean", "sum")[1], value.var = "value"){
-  onesec = set_units(1, "second")
-  fivesec = set_units(5, "second")
-  
-  #' function to check whether one age group is lower than the other
-  #' - tolerance is five seconds
-  lt = function(a, b){
-    (a - b) < fivesec
-  }
-  #' function to check whether one age group is greater than the other
-  #' - tolerance is five seconds
-  gt = function(a, b){
-    (a - b) > fivesec
-  }
-  
-  x = copy(x) %>% setorder(from, to)
-  y = copy(y) %>% setorder(from, to)
-  
-  if(any(value.var %in% colnames(x))){
-    for(val in value.var[which(value.var %in% colnames(x))]){
-      x[, paste0(val,".x") := get(val)]
-      x = x[, -val, with=FALSE]
-      
-      y[, paste0(val,".y") := get(val)]
-      y = y[, -val, with=FALSE]
-      
-      value.var[which(value.var == val)] = paste0(val, ".y") 
-    }
-  }
-  
-  #' for each age group in x
-  for(a in 1:nrow(x)){
-    #' get the age groups in y that overlap with the age group in x
-    ages_that_overlap = y[(from + fivesec) <= x[a, to] & (to - fivesec) >= x[a, from]]
+combineAgeBreaks = function(x, y, value.var="value", method = c("sum", "mean")[2], by = NULL){
+  #' calculate overlapping age groups - this is done once for all groups, but would break if different age groups are present for different groups
+  y_ages = unique(y[, c("from", "to")])
+  if(method == "sum"){
+    #' Generate overlap matrix
+    overlap = pmax(pmin(matrix(rep(x[, to], y_ages[, .N]), ncol=y_ages[, .N]),
+                        matrix(rep(y_ages[, to], x[, .N]), nrow=x[, .N], byrow = TRUE)) - 
+                     pmax(matrix(rep(x[, from], y_ages[, .N]), ncol=y_ages[, .N]),
+                          matrix(rep(y_ages[, from], x[, .N]), nrow=x[, .N], byrow = TRUE)), 0)/
+      matrix(rep(y_ages[, to - from], x[, .N]), nrow=x[, .N], byrow = TRUE)
     
-    #' get duration of each age group
-    dur_x = x[a, to - from]
-    dur_y = ages_that_overlap[, to - from]
+    #' Nb, this is the same as this
+    #overlap = matrix(nrow = x[, .N], ncol = y_ages[, .N])
+    #for(i in 1:x[, .N]){
+    #  for(j in 1:y_ages[, .N]){
+    #    overlap[i, j] = max(0, (min(y_ages[j, to], x[i, to]) - max(x[i, from], y_ages[j, from])))/y_ages[j, to-from]
+    #  }
+    #}
     
-    if(identical(dur_x, dur_y)){
-      #' all are equal, value can be copied
-      for(val in value.var){
-        x[a, val] = ages_that_overlap[, get(val)] 
-      }
-    } else if(sum(dur_y) == dur_x){
-      #' sum is equal, value can be summed/averaged
-      if(method == "mean"){
-        for(val in value.var){
-          x[a, val] = weighted.mean(ages_that_overlap[, get(val)], w = as.numeric(dur_y))
-        }
-      } else if(method == "sum"){
-        for(val in value.var){
-          x[a, val] = sum(ages_that_overlap[, get(val)])
-        }
-      } else {
-        stop(sprintf("Method %s not yet implemented", method))
-      }
-    } else if(sum(dur_y) > dur_x){
-      #' can only use part of one age-group
-      #' age groups that are not first or last will always fully contribute
-      value_rel = rep(1, ages_that_overlap[, .N])
-      value_rel[c(1, ages_that_overlap[, .N])] = NA
-      if(ages_that_overlap[1, from] < x[a, from]){
-        #' first y age group starts before x age group
-        value_rel[1] = (ages_that_overlap[1, to - from] - (x[a, from] - ages_that_overlap[1, from]))/ages_that_overlap[1, to - from]
-      } else {
-        value_rel[1] = 1
-      }
-      if(ages_that_overlap[.N, to] > x[a, to]) {
-        value_rel[ages_that_overlap[, .N]] = (ages_that_overlap[.N, to - from] - (ages_that_overlap[.N, to] - x[a, to]))/ages_that_overlap[.N, to - from]
-      } else if(ages_that_overlap[, .N] > 1) {
-        #' if not larger than 1, already processed in the previous step
-        value_rel[ages_that_overlap[, .N]] = 1
-      }
-      
-      if(method == "mean"){
-        for(val in value.var){
-          x[a, val] = weighted.mean(ages_that_overlap[, get(val)], w = value_rel)
-        }
-      } else if(method == "sum"){
-        for(val in value.var){
-          x[a, val] = sum(ages_that_overlap[, get(val)] * value_rel)
-        }
-      } else {
-        stop(sprintf("Method %s not yet implemented", method))
-      }
-    } else if(sum(dur_y) < dur_x){
-      #' don't have enough data to fill age group
-      stop(sprintf("Not enough data to fill age group %s. Do you need to fillAgeGaps on y?", x[a, name]))
-    } else {
-      stop(sprintf("Unexpected error when filling value for age group %s", x[a, name]))
-    }
+    #' And the same as this
+    #overlap = matrix(nrow = x[, .N], ncol = y_ages[, .N])
+    #for(i in 1:x[, .N]){
+    #  overlap[i, ] = as.numeric(pmax(set_units(0, "year"), pmin(x[i, to], y_ages[, to]) - pmax(x[i, from], y_ages[, from]))/y_ages[, to-from])
+    #}
+  } else if(method == "mean"){
+    #' This is the same, but with x and y swapped
+    overlap = t(pmax(t(pmin(matrix(rep(x[, to], y_ages[, .N]), ncol=y_ages[, .N]),
+                            matrix(rep(y_ages[, to], x[, .N]), nrow=x[, .N], byrow = TRUE))) - 
+                       t(pmax(matrix(rep(x[, from], y_ages[, .N]), ncol=y_ages[, .N]),
+                              matrix(rep(y_ages[, from], x[, .N]), nrow=x[, .N], byrow = TRUE))), 0)/
+                  matrix(rep(x[, to - from], y_ages[, .N]), nrow=y_ages[, .N], byrow = TRUE))
+  } else {
+    stop(sprintf("Method %s is not implemented", method))
   }
   
-  return(x)
+  y[, x %>% cbind(overlap %*% as.matrix(.SD[, value.var, with=FALSE])), by=by]
 }
-
-x = c(0, 2, 4) %>% set_units("year") %>% setAgeBreaks() %>% .[, value := 1:.N] %>% .[]
-y = c(0:10) %>% set_units("year") %>% setAgeBreaks() %>% .[, value := 1:.N] %>% .[]
-combineAgeBreaks(x, y, value.var = "value")
-combineAgeBreaks(x, y, value.var = "value", method = "sum")
-combineAgeBreaks(y, x, value.var = "value")
-combineAgeBreaks(y, x, value.var = "value", method = "sum")
-
-#agelt = function(a, b){
-#  onesec = set_units(1, "second")
-#  return((a - b) < -onesec)
-#}
-#agegt = function(a, b){
-#  onesec = set_units(1, "second")
-#  return((a - b) > onesec)
-#}
 
 matchingAgeBreaks = function(x, y){
   onesec = set_units(1, "second")

@@ -61,7 +61,11 @@ compileModel = function(cpp_file, shrd_lib_loc){
 }
 
 reshapeModelOutput = function(model_output, param.list){
-  compartments = c("S", "VT", "NVT", "B")
+  if(PCVM_VERSION == 2){
+    compartments = c("S", "VT", "NVT", "VT2", "B", "NVT2")
+  } else {
+    compartments = c("S", "VT", "NVT", "B")
+  }
   N_agegroups = param.list$n_agrp
   cluster_arms = param.list$trial_arms %>%
     lapply(function(x){
@@ -94,8 +98,13 @@ reshapeModelOutput = function(model_output, param.list){
   }
   
   out = out %>% merge(cluster_arms, by = c("compartment_index"), all = TRUE)
-  out %>% setorder(variable, cluster, dose, compartment, age, time)  
-  out[variable == "incidence", compartment := switch(as.character(compartment), "S" = "S_VT", "VT" = "S_NVT", "NVT" = "VT_B", "B" = "NVT_B"), by = c("compartment")]
+  out %>% setorder(variable, cluster, dose, compartment, age, time)
+  if(PCVM_VERSION == 2){
+    out[variable == "incidence", compartment := switch(as.character(compartment), "S" = "S_VT", "VT" = "S_NVT", "NVT" = "VT_VT2", "VT2" = "VT_B", "B" = "NVT_B", "NVT2" = "NVT_NVT2"), by = c("compartment")]
+  } else {
+    out[variable == "incidence", compartment := switch(as.character(compartment), "S" = "S_VT", "VT" = "S_NVT", "NVT" = "VT_B", "B" = "NVT_B"), by = c("compartment")]
+  }
+  
   out = out[, c("variable", "cluster", "dose", "compartment", "age", "time", "value")]
   
   if(any(colnames(model_output) %>% grepl("N_", .))){
@@ -128,17 +137,17 @@ statePropModelOutput = function(model_output, param.list, catchup_ages = 0:14){
   
   n_agrp = param.list$n_agrp
   n_clus = length(param.list$trial_arms)
-  state_prop = numeric(sum(sapply(param.list$trial_arms, length) + 1) * 4 * n_agrp)
+  state_prop = numeric(sum(sapply(param.list$trial_arms, length) + 1) * ifelse(PCVM_VERSION == 2, 6, 4) * n_agrp)
   i=1
   for(cl in 1:n_clus)
     for(d in c("unvaccinated", names(param.list$trial_arms[[cl]]))){
-      state_prop[i:(i + 4 * n_agrp - 1)] = switch(
+      state_prop[i:(i + ifelse(PCVM_VERSION == 2, 6, 4) * n_agrp - 1)] = switch(
         d,
         "unvaccinated" = model_output[order(compartment, age), .(value = value * ifelse(apply_catchup, !age %in% catchup_ages, 1)), by=seq_len(model_output[, .N])][, value],
         "catchup" = model_output[order(compartment, age), .(value = value * ifelse(apply_catchup, age %in% catchup_ages, 1)), by=seq_len(model_output[, .N])][, value],
         rep(0, model_output[, .N])
       )
-      i = i + 4 * n_agrp
+      i = i + ifelse(PCVM_VERSION == 2, 6, 4) * n_agrp
     }
   return(state_prop)
 }
@@ -451,12 +460,11 @@ dominantEigenValue = function(contact_matrix){
   return(Re(eigen(contact_matrix, only.values = TRUE)[["values"]][1]))
 }
 
-sampleCaseCarrierRatio = function(age_groups_model, case_carrier_data, case_carrier_data_agegroups){
+sampleCaseCarrierRatio = function(age_groups_model, case_carrier_data){
   i = sample(case_carrier_data[, iter], 1)
   
   case_carrier_ratio_model = age_groups_model %>%
-    combineAgeBreaks(case_carrier_data[iter == i] %>% dcast(age_group ~ st) %>%
-                       merge(x = case_carrier_data_agegroups, by.x="name", by.y="age_group"),
+    combineAgeBreaks(case_carrier_data[iter == i] %>% dcast(from+to+name ~ st),
                      value.var = c("NVT", "VT"))
   
   return(case_carrier_ratio_model)
@@ -472,13 +480,13 @@ adjustForTimeStep = function(value, MODEL_TIMESTEP.=MODEL_TIMESTEP){
     if(!is.matrix(x) & any(x >= 1)) stop("Rate per timestep > 1, use smaller timestep.")
     
     #' Check if contact rate > 1
-    if(is.matrix(x) & checkMatrix){
-      if(!is.null(popsize)){
-        if(any(t(x) %*% diag(1/popsize) > 1)) stop("Rate per timestep > 1, use smaller timestep.")
-      } else {
-        if(any(x > 1)) stop("Rate per timestep > 1, use smaller timestep.") 
-      }
-    }
+    #if(is.matrix(x) & checkMatrix){
+    #  if(!is.null(popsize)){
+    #    if(any(t(x) %*% diag(1/popsize) > 1)) stop("Rate per timestep > 1, use smaller timestep.")
+    #  } else {
+    #    if(any(x > 1)) stop("Rate per timestep > 1, use smaller timestep.") 
+    #  }
+    #}
           
     return(x)
   }
@@ -514,9 +522,6 @@ adjustForTimeStep = function(value, MODEL_TIMESTEP.=MODEL_TIMESTEP){
   return(model_params)
 }
 
-(age_groups_model %>% combineAgeBreaks(c(set_units(6, "weeks"), set_units(5, "years")) %>% setAgeBreaks() %>%
-                                         .[, coverage := c(0, 0.8, 0)], value.var = "coverage") %>% .[, coverage])
-
 getVaccineCoverage = function(age_groups_model, age_breaks, coverage, return_table = FALSE){
   if(length(coverage) == 1 & length(age_breaks) > 2){
     warning("Applying same coverage to all age breaks provided. Consider widening the age-break provided to a single group.")
@@ -546,4 +551,31 @@ getVaccineCoverage = function(age_groups_model, age_breaks, coverage, return_tab
   
   if(return_table) return(coverage_by_age)
   else return(coverage_table[, value])
+}
+
+#' Create expected contact matrix for a given population size
+#' - assuming contacts are made completely at random
+#' - and assuming everyone makes exactly one contact with every other individual
+createExpectedMatrix = function(popsize){
+    expected = matrix(rep(popsize/sum(popsize), each=length(popsize)), length(popsize))
+    return(expected)
+}
+
+#' Create prior for BayesianTools
+createBTPrior = function(priors){
+  BayesianTools::createPrior(
+    density = function(par){
+      seq_len(length(par)) %>%
+        sapply(function(p, par, priors) (priors[p, density][[1]])(par[p]),
+               par=par, priors = priors) %>% sum},
+    sampler = function(n=1){
+      values = seq_len(priors[, .N]) %>%
+        sapply(function(p, n, priors) (priors[p, sampler[[1]]])(n),
+               n=n, priors=priors)
+      if(n == 1) values = t(values)
+      colnames(values) = priors[, variable]
+      return(values)},
+    lower = priors[, min],
+    upper = priors[, max],
+    best = NULL)
 }
