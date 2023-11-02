@@ -26,8 +26,6 @@
 //tmp for debugging
 #include <chrono>
 #include <thread>
-//Rcpp::Rcout << "DEBUG message" << std::endl;
-//std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
 //The RcppArmadillo attribute sets some macros that enable some external libraries and speed up Armadillo
 // [[Rcpp::depends(RcppArmadillo)]]
@@ -55,6 +53,7 @@ extern "C" {
   void initmod(void (* odeparms)(int *, double *));
   void rt_initmod(void (* odeparms)(int *, double *));
   void cleanUp();
+  void vaccineCampaignEvent(int *n, double *t, double *y);
 }
 
 //A TransComp object represents the age-stratified transmission compartments for one individual vaccine stratum
@@ -69,28 +68,43 @@ private:
   arma::rowvec clear_vt_s, clear_nvt_s, clear_b_vt, clear_b_nvt;
   arma::rowvec wane_s, wane_vt, wane_nvt, wane_b;
   arma::rowvec vac_out_s, vac_out_vt, vac_out_nvt, vac_out_b;
-  arma::rowvec age_out_s, age_out_vt, age_out_nvt, age_out_b;
-  arma::rowvec age_in_s, age_in_vt, age_in_nvt, age_in_b;
-  arma::rowvec age_in_s_vac, age_in_vt_vac, age_in_nvt_vac, age_in_b_vac;
-  arma::rowvec age_in_s_unvac, age_in_vt_unvac, age_in_nvt_unvac, age_in_b_unvac;
-  arma::rowvec mgr_out_s_vac, mgr_out_vt_vac, mgr_out_nvt_vac, mgr_out_b_vac;
-  arma::rowvec mgr_out_s_unvac, mgr_out_vt_unvac, mgr_out_nvt_unvac, mgr_out_b_unvac;
-  arma::rowvec vac_cov, vac_eff, vac_waning;
+  arma::rowvec s_age_out, vt_age_out, nvt_age_out, b_age_out;
+  arma::rowvec s_age_remain, vt_age_remain, nvt_age_remain, b_age_remain;
+  arma::rowvec s_age_in, vt_age_in, nvt_age_in, b_age_in;
+  arma::rowvec s_vac_out_migr_out, vt_vac_out_migr_out, nvt_vac_out_migr_out, b_vac_out_migr_out;
+  arma::rowvec s_vac_out_migr_none, vt_vac_out_migr_none, nvt_vac_out_migr_none, b_vac_out_migr_none;
+  arma::rowvec s_vac_none_migr_out, vt_vac_none_migr_out, nvt_vac_none_migr_out, b_vac_none_migr_out;
+  arma::rowvec vac_cov_r, vac_cov_c, vac_eff, vac_waning;
+  int vac_cov_r_index, vac_cov_c_index;
+  Rcpp::List vac_cov_r_values, vac_cov_c_values;
+  bool vac_cov_r_change_final, vac_cov_c_change_final, vac_cov_c_implemented;
+  double vac_cov_r_change_time, vac_cov_c_change_time;
   int n_agrp;
   
 public:
   //Constructor
   TransComp(int &n_agrp, Rcpp::List &vac_parms)
-    : n_agrp(n_agrp), vac_cov(Rcpp::as<arma::rowvec>(vac_parms["coverage"])),
-      vac_eff(Rcpp::as<arma::rowvec>(vac_parms["efficacy"])), vac_waning(Rcpp::as<arma::rowvec>(vac_parms["waning"]))
+    : n_agrp(n_agrp), vac_cov_r_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_r"])), vac_cov_c_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_c"])),
+      vac_cov_r_index(0), vac_cov_c_index(0), vac_cov_c_implemented(false), vac_eff(Rcpp::as<arma::rowvec>(vac_parms["efficacy"])), vac_waning(Rcpp::as<arma::rowvec>(vac_parms["waning"]))
   {
+
     //Preallocate memory for efficiency
-    mgr_out_s_unvac = mgr_out_vt_unvac = mgr_out_nvt_unvac = mgr_out_b_unvac = 
-      mgr_out_s_vac = mgr_out_vt_vac = mgr_out_nvt_vac = mgr_out_b_vac = wane_s = wane_vt = wane_nvt = wane_b = vac_out_s = vac_out_vt = vac_out_nvt = vac_out_b = age_in_b =
-      age_in_nvt = age_in_vt = age_in_s = age_out_b = age_out_nvt = age_out_vt = age_out_s = inf_nvt_b =
-      inf_vt_b = inf_s_vt = inf_s_nvt = clear_vt_s = clear_nvt_s = clear_b_vt = clear_b_nvt = 
-      dSus = dVT = dNVT = dB = Sus = VT = NVT = B = VT_B = NVT_B =
-      VT_NVT_B = arma::rowvec(n_agrp, arma::fill::zeros);
+    s_age_out = s_age_remain = s_age_in = s_vac_out_migr_out = s_vac_out_migr_none = s_vac_none_migr_out =
+    vt_age_out = vt_age_remain = vt_age_in = vt_vac_out_migr_out = vt_vac_out_migr_none = vt_vac_none_migr_out =
+    nvt_age_out = s_age_remain = nvt_age_in = nvt_vac_out_migr_out = nvt_vac_out_migr_none = nvt_vac_none_migr_out =
+    b_age_out = b_age_remain = b_age_in = b_vac_out_migr_out = b_vac_out_migr_none = b_vac_none_migr_out =
+    wane_s = wane_vt = wane_nvt = wane_b = inf_nvt_b = inf_vt_b = inf_s_vt = inf_s_nvt =
+    clear_vt_s = clear_nvt_s = clear_b_vt = clear_b_nvt = 
+    dSus = dVT = dNVT = dB = Sus = VT = NVT = B = VT_B = NVT_B = VT_NVT_B = arma::rowvec(n_agrp, arma::fill::zeros);
+    
+    vac_cov_c = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["value"]);
+    vac_cov_c_change_final = vac_cov_c_index == (vac_cov_c_values.size()-1); //check if this is the final value to be updated
+    vac_cov_c_change_time = (vac_cov_c_change_final ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index+1])["time"]);
+    
+    vac_cov_r = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["value"]);
+    vac_cov_r_change_final = vac_cov_r_index == (vac_cov_r_values.size()-1); //check if this is the final value to be updated
+    vac_cov_r_change_time = (vac_cov_r_change_final ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index+1])["time"]);
+    
   }
   
   //Deconstructor
@@ -117,59 +131,141 @@ public:
     dSus = dVT = dNVT = dB = arma::rowvec(n_agrp, arma::fill::zeros);
   }
   
+  Rcpp::List setStateVaccineCampaign(Rcpp::List vac_in, double *y, int start, double & time){
+    //vaccinees added in this stratum
+    arma::rowvec s_vac_in = Rcpp::as<arma::rowvec>(vac_in["s_vac_in"]);
+    arma::rowvec vt_vac_in = Rcpp::as<arma::rowvec>(vac_in["vt_vac_in"]);
+    arma::rowvec nvt_vac_in = Rcpp::as<arma::rowvec>(vac_in["nvt_vac_in"]);
+    arma::rowvec b_vac_in = Rcpp::as<arma::rowvec>(vac_in["b_vac_in"]);
+    
+    arma::rowvec s_vac_out, vt_vac_out, nvt_vac_out, b_vac_out;
+    s_vac_out = vt_vac_out = nvt_vac_out = b_vac_out = arma::rowvec(n_agrp, arma::fill::zeros);
+    
+    if(!vac_cov_c_change_final && time >= vac_cov_c_change_time){
+      vac_cov_c_index++;
+      vac_cov_c = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["value"]);
+      vac_cov_c_change_final = vac_cov_c_index == (vac_cov_c_values.size()-1); //check if this is the final value to be updated
+      if(!vac_cov_c_change_final) vac_cov_c_change_time = Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index+1])["time"]; //check at which time the value changes next
+      
+      //vaccinees moving out of this stratum
+      s_vac_out = Sus % vac_cov_c;
+      vt_vac_out = VT % vac_cov_c;
+      nvt_vac_out = NVT % vac_cov_c;
+      b_vac_out = B % vac_cov_c;
+      
+      //set back to 0
+      vac_cov_c = arma::rowvec(n_agrp, arma::fill::zeros);
+    }
+    
+    //update states in this TransComp
+    for(int a=0; a<n_agrp; a++){
+      y[start + n_agrp * 0 + a] = y[start + n_agrp * 0 + a] -s_vac_out(a) +s_vac_in(a);
+      y[start + n_agrp * 1 + a] = y[start + n_agrp * 1 + a] -vt_vac_out(a) +vt_vac_in(a);
+      y[start + n_agrp * 2 + a] = y[start + n_agrp * 2 + a] -nvt_vac_out(a) +nvt_vac_in(a);
+      y[start + n_agrp * 3 + a] = y[start + n_agrp * 3 + a] -b_vac_out(a) +b_vac_in(a);
+    }
+    
+    //return Rcpp List
+    Rcpp::List vac_out = Rcpp::List::create(
+      Rcpp::Named("s_vac_in", Rcpp::wrap(s_vac_out)),
+      Rcpp::Named("vt_vac_in", Rcpp::wrap(vt_vac_out)),
+      Rcpp::Named("nvt_vac_in", Rcpp::wrap(nvt_vac_out)),
+      Rcpp::Named("b_vac_in", Rcpp::wrap(b_vac_out))
+    );
+    
+    return vac_out;
+  }
+  
+  void updateParams(double & time){
+    //update any time parameters on the transcomp level
+    if(!vac_cov_r_change_final && time >= vac_cov_r_change_time){
+      vac_cov_r_index++;
+      vac_cov_r = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["value"]);
+      vac_cov_r_change_final = vac_cov_r_index == (vac_cov_r_values.size()-1); //check if this is the final value to be updated
+      if(!vac_cov_r_change_final) vac_cov_r_change_time = Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index+1])["time"]; //check at which time the value changes next
+    }
+    
+    //reset coverage after campaign has been implemented
+    //Nb only works if difference equations are used
+    /*if(vac_cov_c_implemented){
+      Rcpp::Rcout << "DEBUG: resetting vac cov c" << std::endl;
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      vac_cov_c = arma::rowvec(n_agrp, arma::fill::zeros);
+      vac_cov_c_implemented = false;
+    }
+    
+    if(!vac_cov_c_change_final && time >= vac_cov_c_change_time){
+      vac_cov_c_implemented = true;
+      Rcpp::Rcout << "DEBUG: implement vac cov c campaign" << std::endl;
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      vac_cov_c_index++;
+      vac_cov_c = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["value"]);
+      vac_cov_c_change_final = vac_cov_c_index == (vac_cov_c_values.size()-1); //check if this is the final value to be updated
+      if(!vac_cov_c_change_final) vac_cov_c_change_time = Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index+1])["time"]; //check at which time the value changes next
+    }
+     */
+  }
+  
   //This function updates the population (processes ageing and migration)
-  void updateDemographics(arma::rowvec &arate, arma::rowvec &arate_corr, double N_all_ageing, arma::rowvec &mrate, arma::rowvec &vac_in_s, arma::rowvec &vac_in_vt, arma::rowvec &vac_in_nvt, arma::rowvec &vac_in_b){
-    // Process ageing and vaccination
-    age_out_s = arate % Sus;
-    //Correct ageing rates to account for age groups of different sizes (arate_corr)
-    age_in_s.subvec(1, (n_agrp-1)) = age_out_s.subvec(0, (n_agrp-2)) % arate_corr.subvec(1, (n_agrp-1));
+  void updateDemographics(arma::rowvec &arate, arma::rowvec &arate_corr, double N_all_ageing, arma::rowvec &mrate, arma::rowvec &s_vac_in, arma::rowvec &vt_vac_in, arma::rowvec &nvt_vac_in, arma::rowvec &b_vac_in){
+    
+    //Code is commented in detail for S compartment, but equations are the same for other compartment
+    //s
+    //ageing
+    s_age_out = arate % Sus;
+    s_age_remain = (1.0 - arate) % Sus;
+    s_age_in.subvec(1, (n_agrp-1)) = s_age_out.subvec(0, (n_agrp-2)) % arate_corr.subvec(1, (n_agrp-1));
     //Birthrate is equal to deathrate (those that age in the last agegroup in all vaccine arms in this this cluster).
     //Births only occur in unvaccinated stratum, so value passed to N_all_ageing is 0 for all other strata
-    age_in_s(0) = arate(n_agrp-1) * arate_corr(0) * N_all_ageing;
-    //Total number that are not vaccinated and remain in this arm
-    age_in_s_unvac = age_in_s % (1.0 - vac_cov);
-    //Total number that are effectively vaccinated (and move to next vaccine stratum in a cluster)
-    age_in_s_vac = age_in_s % (vac_cov);
+    s_age_in(0) = arate(n_agrp-1) * arate_corr(0) * N_all_ageing;
     
-    age_out_vt = arate % VT;
-    age_in_vt.subvec(1, (n_agrp-1)) = age_out_vt.subvec(0, (n_agrp-2)) % arate_corr.subvec(1, (n_agrp-1));
-    age_in_vt_unvac = age_in_vt % (1.0 - vac_cov);
-    age_in_vt_vac = age_in_vt % (vac_cov);
+    //those vaccinating and migrating
+    //Nb campaign vaccination only works when using difference equations
+    s_vac_out_migr_out = (s_age_in % vac_cov_r + s_age_remain % vac_cov_c) % mrate;
     
-    age_out_nvt = arate % NVT;
-    age_in_nvt.subvec(1, (n_agrp-1)) = age_out_nvt.subvec(0, (n_agrp-2)) % arate_corr.subvec(1, (n_agrp-1));
-    age_in_nvt_unvac = age_in_nvt % (1.0 - vac_cov);
-    age_in_nvt_vac = age_in_nvt % (vac_cov);
+    //those vaccinated but not migrating
+    s_vac_out_migr_none = (s_age_in % vac_cov_r + s_age_remain % vac_cov_c) % (1.0 - mrate);
     
-    age_out_b = arate % B;
-    age_in_b.subvec(1, (n_agrp-1)) = age_out_b.subvec(0, (n_agrp-2)) % arate_corr.subvec(1, (n_agrp-1));
-    age_in_b_unvac = age_in_b % (1.0 - vac_cov);
-    age_in_b_vac = age_in_b % (vac_cov);
+    //those not vaccinated but migrating
+    s_vac_none_migr_out = (s_age_in % (1.0 - vac_cov_r) + s_age_remain % (1.0 - vac_cov_c)) % mrate;
     
-    // Unvaccinated/Vaccinated individuals who migrate out
-    mgr_out_s_unvac = (Sus - age_out_s + age_in_s_unvac) % mrate;
-    mgr_out_s_vac = age_in_s_vac % mrate;
-    mgr_out_vt_unvac = (VT - age_out_vt + age_in_vt_unvac) % mrate;
-    mgr_out_vt_vac = age_in_vt_vac % mrate;
-    mgr_out_nvt_unvac = (NVT - age_out_nvt + age_in_nvt_unvac) % mrate;
-    mgr_out_nvt_vac = age_in_nvt_vac % mrate;
-    mgr_out_b_unvac = (B - age_out_b + age_in_b_unvac) % mrate;
-    mgr_out_b_vac = age_in_b_vac % mrate; 
+    //those ageing in not vaccinated and not migrating
+    s_age_in = s_age_in % (1.0 - vac_cov_r) % (1.0 - mrate);
     
-    // vaccinated individuals who do not migrate out (assigned to next arm in this cluster)
-    age_in_s_vac = age_in_s_vac % (1.0 - mrate);
-    age_in_vt_vac = age_in_vt_vac % (1.0 - mrate);
-    age_in_nvt_vac = age_in_nvt_vac % (1.0 - mrate);
-    age_in_b_vac = age_in_b_vac % (1.0 - mrate);
+    //vt
+    vt_age_out = arate % VT;
+    vt_age_remain = (1.0 - arate) % VT;
+    vt_age_in.subvec(1, (n_agrp-1)) = vt_age_out.subvec(0, (n_agrp-2)) % arate_corr.subvec(1, (n_agrp-1));
+    vt_vac_out_migr_out = (vt_age_in % vac_cov_r + vt_age_remain % vac_cov_c) % mrate;
+    vt_vac_out_migr_none = (vt_age_in % vac_cov_r + vt_age_remain % vac_cov_c) % (1.0 - mrate);
+    vt_vac_none_migr_out = (vt_age_in % (1.0 - vac_cov_r) + vt_age_remain % (1.0 - vac_cov_c)) % mrate;
+    vt_age_in = vt_age_in % (1.0 - vac_cov_r) % (1.0 - mrate);
+    
+    //nvt
+    nvt_age_out = arate % NVT;
+    nvt_age_remain = (1.0 - arate) % NVT;
+    nvt_age_in.subvec(1, (n_agrp-1)) = nvt_age_out.subvec(0, (n_agrp-2)) % arate_corr.subvec(1, (n_agrp-1));
+    nvt_vac_out_migr_out = (nvt_age_in % vac_cov_r + nvt_age_remain % vac_cov_c) % mrate;
+    nvt_vac_out_migr_none = (nvt_age_in % vac_cov_r + nvt_age_remain % vac_cov_c) % (1.0 - mrate);
+    nvt_vac_none_migr_out = (nvt_age_in % (1.0 - vac_cov_r) + nvt_age_remain % (1.0 - vac_cov_c)) % mrate;
+    nvt_age_in = nvt_age_in % (1.0 - vac_cov_r) % (1.0 - mrate);
+    
+    //b
+    b_age_out = arate % B;
+    b_age_remain = (1.0 - arate) % B;
+    b_age_in.subvec(1, (n_agrp-1)) = b_age_out.subvec(0, (n_agrp-2)) % arate_corr.subvec(1, (n_agrp-1));
+    b_vac_out_migr_out = (b_age_in % vac_cov_r + b_age_remain % vac_cov_c) % mrate;
+    b_vac_out_migr_none = (b_age_in % vac_cov_r + b_age_remain % vac_cov_c) % (1.0 - mrate);
+    b_vac_none_migr_out = (b_age_in % (1.0 - vac_cov_r) + b_age_remain % (1.0 - vac_cov_c)) % mrate;
+    b_age_in = b_age_in % (1.0 - vac_cov_r) % (1.0 - mrate);
     
     //The change in states with ageing, in-migration, and in-vaccination, but without in-migration  
     //Those who are vaccinated will move to next arm
     
-    dSus += Sus % (-arate -mrate +arate % mrate) + (1.0 - mrate) % age_in_s_unvac +vac_in_s;
-    dVT += VT % (-arate -mrate +arate % mrate) + (1.0 - mrate) % age_in_vt_unvac +vac_in_vt;
-    dNVT += NVT % (-arate -mrate +arate % mrate) + (1.0 - mrate) % age_in_nvt_unvac +vac_in_nvt;
-    dB += B % (-arate -mrate +arate % mrate) + (1.0 - mrate) % age_in_b_unvac +vac_in_b;
-    
+    dSus += -Sus % (arate +mrate +vac_cov_c -arate % mrate -mrate % vac_cov_c) +s_age_in +s_vac_in;
+    dVT += -VT % (arate +mrate +vac_cov_c -arate % mrate -mrate % vac_cov_c) +vt_age_in +vt_vac_in;
+    dNVT += -NVT % (arate +mrate +vac_cov_c -arate % mrate -mrate % vac_cov_c) +nvt_age_in +nvt_vac_in;
+    dB += -B % (arate +mrate +vac_cov_c -arate % mrate -mrate % vac_cov_c) +b_age_in +b_vac_in;
   }
   
   //This function actually calculates the ODEs
@@ -235,22 +331,22 @@ public:
   arma::rowvec& getdVT(){ return dVT; }
   arma::rowvec& getdNVT(){ return dNVT; }
   arma::rowvec& getdB(){ return dB; }
-  arma::rowvec& get_vac_out_s(){ return age_in_s_vac; }
-  arma::rowvec& get_vac_out_vt(){ return age_in_vt_vac; }
-  arma::rowvec& get_vac_out_nvt(){ return age_in_nvt_vac; }
-  arma::rowvec& get_vac_out_b(){ return age_in_b_vac; }
+  arma::rowvec& get_vac_out_migr_out_s(){ return s_vac_out_migr_out; }
+  arma::rowvec& get_vac_out_migr_out_vt(){ return vt_vac_out_migr_out; }
+  arma::rowvec& get_vac_out_migr_out_nvt(){ return nvt_vac_out_migr_out; }
+  arma::rowvec& get_vac_out_migr_out_b(){ return b_vac_out_migr_out; }
+  arma::rowvec& get_vac_out_migr_none_s(){ return s_vac_out_migr_none; }
+  arma::rowvec& get_vac_out_migr_none_vt(){ return vt_vac_out_migr_none; }
+  arma::rowvec& get_vac_out_migr_none_nvt(){ return nvt_vac_out_migr_none; }
+  arma::rowvec& get_vac_out_migr_none_b(){ return b_vac_out_migr_none; }
+  arma::rowvec& get_vac_none_migr_out_s(){ return s_vac_none_migr_out; }
+  arma::rowvec& get_vac_none_migr_out_vt(){ return vt_vac_none_migr_out; }
+  arma::rowvec& get_vac_none_migr_out_nvt(){ return nvt_vac_none_migr_out; }
+  arma::rowvec& get_vac_none_migr_out_b(){ return b_vac_none_migr_out; }
   arma::rowvec& get_wane_s(){ return wane_s; }
   arma::rowvec& get_wane_vt(){ return wane_vt; }
   arma::rowvec& get_wane_nvt(){ return wane_nvt; }
   arma::rowvec& get_wane_b(){ return wane_b; }
-  arma::rowvec& get_migr_s_unvac(){ return mgr_out_s_unvac; }
-  arma::rowvec& get_migr_s_vac(){ return mgr_out_s_vac; }
-  arma::rowvec& get_migr_vt_unvac(){ return mgr_out_vt_unvac; }
-  arma::rowvec& get_migr_vt_vac(){ return mgr_out_vt_vac; }
-  arma::rowvec& get_migr_nvt_unvac(){ return mgr_out_nvt_unvac; }
-  arma::rowvec& get_migr_nvt_vac(){ return mgr_out_nvt_vac; }
-  arma::rowvec& get_migr_b_unvac(){ return mgr_out_b_unvac; }
-  arma::rowvec& get_migr_b_vac(){ return mgr_out_b_vac; }
   
   //Getter function for the total number of carriers (with any serotype) by agegroup
   arma::rowvec& getCarriers(){ return VT_NVT_B; }
@@ -289,6 +385,7 @@ public:
       arate(Rcpp::as<arma::rowvec>(parms["ageout"])), travel(Rcpp::as<arma::mat>(parms["travel"])),
       migration(Rcpp::as<arma::mat>(parms["migration"]))
   {
+
     //We take the total number of required vaccinated strata from the trial_arms element in the parms list passed to
     // deSolve. Total number of arms will be the number provided + 1 for the unvaccinated
     Rcpp::List trial_arm = Rcpp::as<Rcpp::List>(parms["trial_arms"])[c];
@@ -319,9 +416,17 @@ public:
     //Vaccinated strata are stored in a vector with TransComp objects
     vac_strata.reserve(vstrata.size()+1);
     
+    //list with empty vaccine coverage
+    Rcpp::List coverage_null_inner = Rcpp::List::create(
+      Rcpp::Named("value", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
+      Rcpp::Named("time", 0.0)
+    );
+    Rcpp::List coverage_null = Rcpp::List::create(Rcpp::clone(coverage_null_inner));
+    
     //We add one stratum for unvaccinated people by default in all arms
     Rcpp::List vac_parms_unvac = Rcpp::List::create(
-      Rcpp::Named("coverage", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
+      Rcpp::Named("coverage_r", Rcpp::clone(coverage_null)),
+      Rcpp::Named("coverage_c", Rcpp::clone(coverage_null)),
       Rcpp::Named("efficacy", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
       Rcpp::Named("waning", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros)))
     );
@@ -329,8 +434,10 @@ public:
     //We assign each stratum the coverage of the subsequent dose, e.g. the coverage set in the first stratum
     // (unvaccinated) is that of the 1st vaccine dose.
     if(vstrata.size() > 0){
-      arma::rowvec coverage_next_dose = Rcpp::as<Rcpp::List>(vstrata[0])["coverage"];
-      vac_parms_unvac["coverage"] = Rcpp::wrap(coverage_next_dose);
+      Rcpp::List coverage_r_next_dose = Rcpp::as<Rcpp::List>(vstrata[0])["coverage_r"];
+      Rcpp::List coverage_c_next_dose = Rcpp::as<Rcpp::List>(vstrata[0])["coverage_c"];
+      vac_parms_unvac["coverage_c"] = Rcpp::wrap(coverage_c_next_dose);
+      vac_parms_unvac["coverage_r"] = Rcpp::wrap(coverage_r_next_dose);
     }
     
     //Adjust mrates so population size will remain fixed
@@ -343,10 +450,13 @@ public:
       Rcpp::List vac_parms = vstrata[t];
       //assign coverage for next dose
       if(t < (vstrata.size()-1)){
-        arma::rowvec coverage_next_dose = Rcpp::as<Rcpp::List>(vstrata[t+1])["coverage"];
-        vac_parms["coverage"] = Rcpp::wrap(coverage_next_dose);
+        Rcpp::List coverage_r_next_dose = Rcpp::as<Rcpp::List>(vstrata[t+1])["coverage_r"];
+        Rcpp::List coverage_c_next_dose = Rcpp::as<Rcpp::List>(vstrata[t+1])["coverage_c"];
+        vac_parms_unvac["coverage_c"] = Rcpp::wrap(coverage_c_next_dose);
+        vac_parms_unvac["coverage_r"] = Rcpp::wrap(coverage_r_next_dose);
       } else {
-        vac_parms["coverage"] = Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros));
+        vac_parms["coverage_c"] = Rcpp::clone(coverage_null);
+        vac_parms["coverage_r"] = Rcpp::clone(coverage_null);
       }
       vac_strata.emplace_back(TransComp(n_agrp, vac_parms));
     }
@@ -379,16 +489,41 @@ public:
     }
   }
   
+  void updateParams(double & time){
+    //update any time parameters on the cluster level
+  }
+  
   //This function assigns the current state of each compartment from values calculated in deSolve. Values are stored
   // in one long array. *y points to the address of the first value.
-  int setState(double *y, int start){
+  int setState(double *y, int start, double & time){
+    updateParams(time);
+    
     for(int t=0; t < vac_strata.size(); t++){
       vac_strata[t].setState(y, start + n_agrp * 4 * t);
+      vac_strata[t].updateParams(time);
     }
     
     //also make sure incidence is empty
     incidence_all = arma::rowvec(4 * n_agrp *vac_strata.size(), arma::fill::zeros);
     
+    return vac_strata.size() * 4 * n_agrp;
+  }
+  
+  int setStateVaccineCampaign(double *y, int start, double & time){
+    Rcpp::List vac_in;
+    for(int t=0; t < vac_strata.size(); t++){
+      if(t == 0){
+        vac_in = Rcpp::List::create(
+          Rcpp::Named("s_vac_in", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
+          Rcpp::Named("vt_vac_in", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
+          Rcpp::Named("nvt_vac_in", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
+          Rcpp::Named("b_vac_in", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros)))
+        );
+      }
+      vac_in = vac_strata[t].setStateVaccineCampaign(vac_in, y, start + n_agrp * 4 * t, time);
+    }
+    
+    //return new start value
     return vac_strata.size() * 4 * n_agrp;
   }
   
@@ -438,28 +573,28 @@ public:
         // age in all strata (N_ageing).
         N_ageing = N(n_agrp -1);
       } else {
-        //Vaccination happens as people age. Effectively vaccinated people move from the previous stratum to the next.
-        vac_out_s = vac_strata[t-1].get_vac_out_s();
-        vac_out_vt = vac_strata[t-1].get_vac_out_vt();
-        vac_out_nvt = vac_strata[t-1].get_vac_out_nvt();
-        vac_out_b = vac_strata[t-1].get_vac_out_b();
+        //Effectively vaccinated people move from the previous stratum to the next (if they do not migrate).
+        vac_out_s = vac_strata[t-1].get_vac_out_migr_none_s();
+        vac_out_vt = vac_strata[t-1].get_vac_out_migr_none_vt();
+        vac_out_nvt = vac_strata[t-1].get_vac_out_migr_none_nvt();
+        vac_out_b = vac_strata[t-1].get_vac_out_migr_none_b();
         //No newborns enter the vaccinated strata.
         N_ageing = 0.0;
         //Migrate who are vaccinated
-        mgr_out_s = vac_strata[t-1].get_migr_s_vac();
-        mgr_out_vt = vac_strata[t-1].get_migr_vt_vac();
-        mgr_out_nvt = vac_strata[t-1].get_migr_nvt_vac();
-        mgr_out_b = vac_strata[t-1].get_migr_b_vac();
+        mgr_out_s = vac_strata[t-1].get_vac_out_migr_out_s();
+        mgr_out_vt = vac_strata[t-1].get_vac_out_migr_out_vt();
+        mgr_out_nvt = vac_strata[t-1].get_vac_out_migr_out_nvt();
+        mgr_out_b = vac_strata[t-1].get_vac_out_migr_out_b();
       }
 
       //We update the derivatives for this specific stratum through the calculateDerivs() function.
       vac_strata[t].updateDemographics(arate, arate_corr, N_ageing, mrates_total, vac_out_s, vac_out_vt, vac_out_nvt, vac_out_b);
       
       //Also add those migrating but not vaccinated (remain in this arm in other cluster)
-      mgr_out_s += vac_strata[t].get_migr_s_unvac();
-      mgr_out_vt += vac_strata[t].get_migr_vt_unvac();
-      mgr_out_nvt += vac_strata[t].get_migr_nvt_unvac();
-      mgr_out_b += vac_strata[t].get_migr_b_unvac();
+      mgr_out_s += vac_strata[t].get_vac_none_migr_out_s();
+      mgr_out_vt += vac_strata[t].get_vac_none_migr_out_vt();
+      mgr_out_nvt += vac_strata[t].get_vac_none_migr_out_nvt();
+      mgr_out_b += vac_strata[t].get_vac_none_migr_out_b();
       
       for(int j=0; j<n_clus; j++){
         
@@ -572,10 +707,26 @@ public:
 std::vector<std::unique_ptr<Cluster>> clusters;
 int n_clus, n_agrp;
 
+void vaccineCampaignEvent(int *n, double *t, double *y) {
+  double time = t[0];
+  
+  //first set state of all compartments
+  int start = 0;
+  for(int c = 0; c < n_clus; c++){
+    start += clusters[c]->setState(y, start, time);
+  }
+  
+  //now process vaccination
+  start = 0;
+  for(int c = 0; c < n_clus; c++){
+    start += clusters[c]->setStateVaccineCampaign(y, start, time);
+  }
+}
+
 //This function sets the model up, and stores the parameter values in memory. It is only called once when setting up
 // the model
 void initmod(void (* odeparms)(int *, double *)) {
-  //Rcpp::Rcout << "DEBUG: initializing model" << std::endl;
+
   //We get the parms argument passed to deSolve as SEXP object
   SEXP sparms = get_deSolve_gparms_Rcpp();
   
@@ -619,6 +770,7 @@ void initmod(void (* odeparms)(int *, double *)) {
 //This function sets the model up, and stores the parameter values in memory. It is only called once when setting up
 // the model
 void rt_initmod(void (* odeparms)(int *, double *)) {
+
   //We get the parms argument passed to deSolve as SEXP object
   SEXP sparms = get_rootSolve_gparms_Rcpp();
   
@@ -671,17 +823,20 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
   
   //TODO: check if this is necessary
   if (ip[0] < 1) error("nout should be at least 1");
+  
   //if(time < 1){
   //  Rcpp::Rcout << "DEBUG: time: " << time << "; ip[0]: " << ip[0] << std::endl;
+  //  std::this_thread::sleep_for(std::chrono::milliseconds(100));
   //}
   
   //We loop through every cluster in the model, and update the state in each compartment. State is passed from deSolve
   // by the y array. The states are ordered as: cluster > vaccine_arm > compartment (S, VT, NVT, B) > agegroup.
   //The setState() function returns the total number of compartments updated by that cluster (which is
   // the number of vaccine strata in that cluster * 4 infection compartments * the number of agegroups)
+  //We also update any time-varying parameters in the model
   int start = 0;
   for(int c = 0; c < n_clus; c++){
-    start += clusters[c]->setState(y, start);
+    start += clusters[c]->setState(y, start, time);
   }
   
   //Process demographic changes (ageing and migration) and vaccinations

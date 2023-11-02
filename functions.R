@@ -434,7 +434,7 @@ adjustContactMatrixAgeGroups = function(age_groups_model, contact_matrix_data, c
                        cbind(contact_matrix_data %>% dcast(contactee_age_group ~ contactor_age_group)),
                      method = "sum", value.var = contact_matrix_data_agegroups[, name]) %>%
     .[, -c("from", "to")] %>%
-    .[, contactee_age_group := name] %>% .[, -"name"] %>%
+    .[, contactee_age_group := name] %>% .[, -c("name")] %>%
     melt(id.vars = "contactee_age_group", variable.name = "contactor_age_group") %>%
     dcast(contactor_age_group ~ contactee_age_group) %>%
     cbind(contact_matrix_data_agegroups[, -"name"]) %>%
