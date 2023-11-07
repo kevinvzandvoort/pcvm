@@ -27,6 +27,10 @@
 #include <chrono>
 #include <thread>
 
+#ifdef MP_ENABLED
+#include <omp.h>
+#endif
+
 //The RcppArmadillo attribute sets some macros that enable some external libraries and speed up Armadillo
 // [[Rcpp::depends(RcppArmadillo)]]
 
@@ -74,7 +78,8 @@ private:
   arma::rowvec s_vac_out_migr_out, vt_vac_out_migr_out, nvt_vac_out_migr_out, b_vac_out_migr_out;
   arma::rowvec s_vac_out_migr_none, vt_vac_out_migr_none, nvt_vac_out_migr_none, b_vac_out_migr_none;
   arma::rowvec s_vac_none_migr_out, vt_vac_none_migr_out, nvt_vac_none_migr_out, b_vac_none_migr_out;
-  arma::rowvec vac_cov_r, vac_cov_c, vac_eff, vac_waning;
+  arma::rowvec s_vac_c_out, vt_vac_c_out, nvt_vac_c_out, b_vac_c_out;
+  arma::rowvec vac_cov_r, vac_cov_c, vac_eff, vac_waning, vac_cov_r_to, vac_cov_c_to;
   int vac_cov_r_index, vac_cov_c_index;
   Rcpp::List vac_cov_r_values, vac_cov_c_values;
   bool vac_cov_r_change_final, vac_cov_c_change_final, vac_cov_c_implemented;
@@ -87,7 +92,6 @@ public:
     : n_agrp(n_agrp), vac_cov_r_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_r"])), vac_cov_c_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_c"])),
       vac_cov_r_index(0), vac_cov_c_index(0), vac_cov_c_implemented(false), vac_eff(Rcpp::as<arma::rowvec>(vac_parms["efficacy"])), vac_waning(Rcpp::as<arma::rowvec>(vac_parms["waning"]))
   {
-
     //Preallocate memory for efficiency
     s_age_out = s_age_remain = s_age_in = s_vac_out_migr_out = s_vac_out_migr_none = s_vac_none_migr_out =
     vt_age_out = vt_age_remain = vt_age_in = vt_vac_out_migr_out = vt_vac_out_migr_none = vt_vac_none_migr_out =
@@ -98,13 +102,15 @@ public:
     dSus = dVT = dNVT = dB = Sus = VT = NVT = B = VT_B = NVT_B = VT_NVT_B = arma::rowvec(n_agrp, arma::fill::zeros);
     
     vac_cov_c = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["value"]);
+    vac_cov_c_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["coverage_to"]);
     vac_cov_c_change_final = vac_cov_c_index == (vac_cov_c_values.size()-1); //check if this is the final value to be updated
     vac_cov_c_change_time = (vac_cov_c_change_final ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index+1])["time"]);
     
     vac_cov_r = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["value"]);
+    vac_cov_r_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["coverage_to"]);
+    //vac_wane_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["waning_to"]);
     vac_cov_r_change_final = vac_cov_r_index == (vac_cov_r_values.size()-1); //check if this is the final value to be updated
     vac_cov_r_change_time = (vac_cov_r_change_final ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index+1])["time"]);
-    
   }
   
   //Deconstructor
@@ -131,27 +137,27 @@ public:
     dSus = dVT = dNVT = dB = arma::rowvec(n_agrp, arma::fill::zeros);
   }
   
-  Rcpp::List setStateVaccineCampaign(Rcpp::List vac_in, double *y, int start, double & time){
+  void setStateVaccineCampaign(Rcpp::List vac_in, double *y, int start, double & time){
     //vaccinees added in this stratum
     arma::rowvec s_vac_in = Rcpp::as<arma::rowvec>(vac_in["s_vac_in"]);
     arma::rowvec vt_vac_in = Rcpp::as<arma::rowvec>(vac_in["vt_vac_in"]);
     arma::rowvec nvt_vac_in = Rcpp::as<arma::rowvec>(vac_in["nvt_vac_in"]);
     arma::rowvec b_vac_in = Rcpp::as<arma::rowvec>(vac_in["b_vac_in"]);
     
-    arma::rowvec s_vac_out, vt_vac_out, nvt_vac_out, b_vac_out;
-    s_vac_out = vt_vac_out = nvt_vac_out = b_vac_out = arma::rowvec(n_agrp, arma::fill::zeros);
+    s_vac_c_out = vt_vac_c_out = nvt_vac_c_out = b_vac_c_out = arma::rowvec(n_agrp, arma::fill::zeros);
     
     if(!vac_cov_c_change_final && time >= vac_cov_c_change_time){
       vac_cov_c_index++;
       vac_cov_c = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["value"]);
+      vac_cov_c_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["coverage_to"]);
       vac_cov_c_change_final = vac_cov_c_index == (vac_cov_c_values.size()-1); //check if this is the final value to be updated
       if(!vac_cov_c_change_final) vac_cov_c_change_time = Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index+1])["time"]; //check at which time the value changes next
       
       //vaccinees moving out of this stratum
-      s_vac_out = Sus % vac_cov_c;
-      vt_vac_out = VT % vac_cov_c;
-      nvt_vac_out = NVT % vac_cov_c;
-      b_vac_out = B % vac_cov_c;
+      s_vac_c_out = Sus % vac_cov_c;
+      vt_vac_c_out = VT % vac_cov_c;
+      nvt_vac_c_out = NVT % vac_cov_c;
+      b_vac_c_out = B % vac_cov_c;
       
       //set back to 0
       vac_cov_c = arma::rowvec(n_agrp, arma::fill::zeros);
@@ -159,21 +165,11 @@ public:
     
     //update states in this TransComp
     for(int a=0; a<n_agrp; a++){
-      y[start + n_agrp * 0 + a] = y[start + n_agrp * 0 + a] -s_vac_out(a) +s_vac_in(a);
-      y[start + n_agrp * 1 + a] = y[start + n_agrp * 1 + a] -vt_vac_out(a) +vt_vac_in(a);
-      y[start + n_agrp * 2 + a] = y[start + n_agrp * 2 + a] -nvt_vac_out(a) +nvt_vac_in(a);
-      y[start + n_agrp * 3 + a] = y[start + n_agrp * 3 + a] -b_vac_out(a) +b_vac_in(a);
+      y[start + n_agrp * 0 + a] = y[start + n_agrp * 0 + a] -s_vac_c_out(a) +s_vac_in(a);
+      y[start + n_agrp * 1 + a] = y[start + n_agrp * 1 + a] -vt_vac_c_out(a) +vt_vac_in(a);
+      y[start + n_agrp * 2 + a] = y[start + n_agrp * 2 + a] -nvt_vac_c_out(a) +nvt_vac_in(a);
+      y[start + n_agrp * 3 + a] = y[start + n_agrp * 3 + a] -b_vac_c_out(a) +b_vac_in(a);
     }
-    
-    //return Rcpp List
-    Rcpp::List vac_out = Rcpp::List::create(
-      Rcpp::Named("s_vac_in", Rcpp::wrap(s_vac_out)),
-      Rcpp::Named("vt_vac_in", Rcpp::wrap(vt_vac_out)),
-      Rcpp::Named("nvt_vac_in", Rcpp::wrap(nvt_vac_out)),
-      Rcpp::Named("b_vac_in", Rcpp::wrap(b_vac_out))
-    );
-    
-    return vac_out;
   }
   
   void updateParams(double & time){
@@ -181,6 +177,8 @@ public:
     if(!vac_cov_r_change_final && time >= vac_cov_r_change_time){
       vac_cov_r_index++;
       vac_cov_r = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["value"]);
+      vac_cov_r_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["coverage_to"]);
+      //vac_wane_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["waning_to"]);
       vac_cov_r_change_final = vac_cov_r_index == (vac_cov_r_values.size()-1); //check if this is the final value to be updated
       if(!vac_cov_r_change_final) vac_cov_r_change_time = Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index+1])["time"]; //check at which time the value changes next
     }
@@ -343,6 +341,13 @@ public:
   arma::rowvec& get_vac_none_migr_out_vt(){ return vt_vac_none_migr_out; }
   arma::rowvec& get_vac_none_migr_out_nvt(){ return nvt_vac_none_migr_out; }
   arma::rowvec& get_vac_none_migr_out_b(){ return b_vac_none_migr_out; }
+  arma::rowvec& get_vac_c_out_s(){ return s_vac_c_out; }
+  arma::rowvec& get_vac_c_out_vt(){ return vt_vac_c_out; }
+  arma::rowvec& get_vac_c_out_nvt(){ return nvt_vac_c_out; }
+  arma::rowvec& get_vac_c_out_b(){ return b_vac_c_out; }
+  arma::rowvec& get_vac_cov_r_to(){ return vac_cov_r_to; }
+  arma::rowvec& get_vac_cov_c_to(){ return vac_cov_c_to; }
+  //arma::rowvec& get_vac_wane_to(){ return vac_wane_to; }
   arma::rowvec& get_wane_s(){ return wane_s; }
   arma::rowvec& get_wane_vt(){ return wane_vt; }
   arma::rowvec& get_wane_nvt(){ return wane_nvt; }
@@ -414,50 +419,55 @@ public:
     arate_corr.subvec(1, (n_agrp-1)) = arate.subvec(1, (n_agrp-1))/arate.subvec(0, (n_agrp-2));
     
     //Vaccinated strata are stored in a vector with TransComp objects
-    vac_strata.reserve(vstrata.size()+1);
+    //vac_strata.reserve(vstrata.size()+1);
+    vac_strata.reserve(vstrata.size());
     
     //list with empty vaccine coverage
     Rcpp::List coverage_null_inner = Rcpp::List::create(
       Rcpp::Named("value", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
-      Rcpp::Named("time", 0.0)
+      Rcpp::Named("time", 0.0),
+      Rcpp::Named("coverage_to", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros)))
     );
     Rcpp::List coverage_null = Rcpp::List::create(Rcpp::clone(coverage_null_inner));
     
     //We add one stratum for unvaccinated people by default in all arms
-    Rcpp::List vac_parms_unvac = Rcpp::List::create(
-      Rcpp::Named("coverage_r", Rcpp::clone(coverage_null)),
-      Rcpp::Named("coverage_c", Rcpp::clone(coverage_null)),
-      Rcpp::Named("efficacy", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
-      Rcpp::Named("waning", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros)))
-    );
+    //Rcpp::List vac_parms_unvac = Rcpp::List::create(
+    //  Rcpp::Named("coverage_r", Rcpp::clone(coverage_null)),
+    //  Rcpp::Named("coverage_c", Rcpp::clone(coverage_null)),
+    //  Rcpp::Named("efficacy", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
+    //  Rcpp::Named("waning", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros)))
+    //);
     
     //We assign each stratum the coverage of the subsequent dose, e.g. the coverage set in the first stratum
     // (unvaccinated) is that of the 1st vaccine dose.
-    if(vstrata.size() > 0){
-      Rcpp::List coverage_r_next_dose = Rcpp::as<Rcpp::List>(vstrata[0])["coverage_r"];
-      Rcpp::List coverage_c_next_dose = Rcpp::as<Rcpp::List>(vstrata[0])["coverage_c"];
-      vac_parms_unvac["coverage_c"] = Rcpp::wrap(coverage_c_next_dose);
-      vac_parms_unvac["coverage_r"] = Rcpp::wrap(coverage_r_next_dose);
-    }
+    //if(vstrata.size() > 0){
+    //  Rcpp::List coverage_r_next_dose = Rcpp::as<Rcpp::List>(vstrata[0])["coverage_r"];
+    //  Rcpp::List coverage_c_next_dose = Rcpp::as<Rcpp::List>(vstrata[0])["coverage_c"];
+    //  vac_parms_unvac["coverage_c"] = Rcpp::wrap(coverage_c_next_dose);
+    //  vac_parms_unvac["coverage_r"] = Rcpp::wrap(coverage_r_next_dose);
+    //}
     
     //Adjust mrates so population size will remain fixed
     mrates_total = arma::rowvec(n_agrp, arma::fill::zeros);
     
-    vac_strata.emplace_back(TransComp(n_agrp, vac_parms_unvac));
+    //vac_strata.emplace_back(TransComp(n_agrp, vac_parms_unvac));
     
     //Add subsequent strata for vaccinated transmission compartments
     for(int t=0; t < vstrata.size(); t++){
       Rcpp::List vac_parms = vstrata[t];
-      //assign coverage for next dose
-      if(t < (vstrata.size()-1)){
-        Rcpp::List coverage_r_next_dose = Rcpp::as<Rcpp::List>(vstrata[t+1])["coverage_r"];
-        Rcpp::List coverage_c_next_dose = Rcpp::as<Rcpp::List>(vstrata[t+1])["coverage_c"];
-        vac_parms_unvac["coverage_c"] = Rcpp::wrap(coverage_c_next_dose);
-        vac_parms_unvac["coverage_r"] = Rcpp::wrap(coverage_r_next_dose);
-      } else {
+      
+      //unvaccinated stratum has no waning or VE
+      if(t == 0){
+        vac_parms["waning"] = Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros));
+        vac_parms["efficacy"] = Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros));
+      }
+      
+      //final stratum has no coverage
+      if(t == (vstrata.size()-1)){
         vac_parms["coverage_c"] = Rcpp::clone(coverage_null);
         vac_parms["coverage_r"] = Rcpp::clone(coverage_null);
       }
+      //Rcpp::Rcout << "Create stratum: " << t << std::endl;
       vac_strata.emplace_back(TransComp(n_agrp, vac_parms));
     }
     
@@ -511,16 +521,33 @@ public:
   
   int setStateVaccineCampaign(double *y, int start, double & time){
     Rcpp::List vac_in;
+    arma::rowvec s_vac_in, vt_vac_in, nvt_vac_in, b_vac_in;
+    
     for(int t=0; t < vac_strata.size(); t++){
-      if(t == 0){
-        vac_in = Rcpp::List::create(
-          Rcpp::Named("s_vac_in", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
-          Rcpp::Named("vt_vac_in", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
-          Rcpp::Named("nvt_vac_in", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
-          Rcpp::Named("b_vac_in", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros)))
-        );
+      s_vac_in = vt_vac_in = nvt_vac_in = b_vac_in = arma::rowvec(n_agrp, arma::fill::zeros);
+      
+      if(t > 0){
+        //Effectively vaccinated people move from previous strata to the current stratum (if they do not migrate).
+        for(int v = 0; v < t; v++){
+          //check if people move into this arm
+          arma::umat cov_this_arm = vac_strata[v].get_vac_cov_c_to() == arma::rowvec(n_agrp, arma::fill::value(t));
+          if(accu(cov_this_arm) > 0){
+            s_vac_in += vac_strata[v].get_vac_c_out_s() % cov_this_arm;
+            vt_vac_in += vac_strata[v].get_vac_c_out_vt() % cov_this_arm;
+            nvt_vac_in += vac_strata[v].get_vac_c_out_nvt() % cov_this_arm;
+            b_vac_in += vac_strata[v].get_vac_c_out_b() % cov_this_arm;
+          }
+        }
       }
-      vac_in = vac_strata[t].setStateVaccineCampaign(vac_in, y, start + n_agrp * 4 * t, time);
+
+      vac_in = Rcpp::List::create(
+        Rcpp::Named("s_vac_in", s_vac_in),
+        Rcpp::Named("vt_vac_in", vt_vac_in),
+        Rcpp::Named("nvt_vac_in", nvt_vac_in),
+        Rcpp::Named("b_vac_in", b_vac_in)
+      );
+      
+      vac_strata[t].setStateVaccineCampaign(vac_in, y, start + n_agrp * 4 * t, time);
     }
     
     //return new start value
@@ -564,27 +591,39 @@ public:
     
     //Loop through all vaccine strata to calculate the derivatives at this timestep
     for(int t=0; t < vac_strata.size(); t++){
-
+      
+      //initially, no people move into this stratum
+      vac_out_s = vac_out_vt = vac_out_nvt = vac_out_b = arma::rowvec(n_agrp, arma::fill::zeros);
+      mgr_out_s = mgr_out_vt = mgr_out_nvt = mgr_out_b = arma::rowvec(n_agrp, arma::fill::zeros);
+      
       if(t == 0){
-        //No vaccinated individuals move into the first stratum (unvaccinated).
-        vac_out_s = vac_out_vt = vac_out_nvt = vac_out_b = arma::rowvec(n_agrp, arma::fill::zeros);
-        mgr_out_s = mgr_out_vt = mgr_out_nvt = mgr_out_b = arma::rowvec(n_agrp, arma::fill::zeros);
         //Newborns are all born into the first stratum (unvaccinated), and calculated as a proportion of all those who
         // age in all strata (N_ageing).
         N_ageing = N(n_agrp -1);
+        
+        //No vaccinated individuals move into the first stratum (unvaccinated).
       } else {
-        //Effectively vaccinated people move from the previous stratum to the next (if they do not migrate).
-        vac_out_s = vac_strata[t-1].get_vac_out_migr_none_s();
-        vac_out_vt = vac_strata[t-1].get_vac_out_migr_none_vt();
-        vac_out_nvt = vac_strata[t-1].get_vac_out_migr_none_nvt();
-        vac_out_b = vac_strata[t-1].get_vac_out_migr_none_b();
         //No newborns enter the vaccinated strata.
         N_ageing = 0.0;
-        //Migrate who are vaccinated
-        mgr_out_s = vac_strata[t-1].get_vac_out_migr_out_s();
-        mgr_out_vt = vac_strata[t-1].get_vac_out_migr_out_vt();
-        mgr_out_nvt = vac_strata[t-1].get_vac_out_migr_out_nvt();
-        mgr_out_b = vac_strata[t-1].get_vac_out_migr_out_b();
+        
+        //Effectively vaccinated people move from previous strata to the current stratum (if they do not migrate).
+        for(int v = 0; v < t; v++){
+          //check if people move into this arm
+          arma::umat cov_this_arm = vac_strata[v].get_vac_cov_r_to() == arma::rowvec(n_agrp, arma::fill::value(t));
+          if(accu(cov_this_arm) > 0){
+            vac_out_s += vac_strata[v].get_vac_out_migr_none_s() % cov_this_arm;
+            vac_out_vt += vac_strata[v].get_vac_out_migr_none_vt() % cov_this_arm;
+            vac_out_nvt += vac_strata[v].get_vac_out_migr_none_nvt() % cov_this_arm;
+            vac_out_b += vac_strata[v].get_vac_out_migr_none_b() % cov_this_arm;
+            
+            //Migrate who are vaccinated
+            mgr_out_s += vac_strata[v].get_vac_out_migr_out_s() % cov_this_arm;
+            mgr_out_vt += vac_strata[v].get_vac_out_migr_out_vt() % cov_this_arm;
+            mgr_out_nvt += vac_strata[v].get_vac_out_migr_out_nvt() % cov_this_arm;
+            mgr_out_b += vac_strata[v].get_vac_out_migr_out_b() % cov_this_arm;
+          }
+        }
+        
       }
 
       //We update the derivatives for this specific stratum through the calculateDerivs() function.
@@ -659,6 +698,21 @@ public:
     
     //Loop through all vaccine strata to calculate the derivatives at this timestep
     wane_s = wane_vt = wane_nvt = wane_b = arma::rowvec(n_agrp, arma::fill::zeros);
+    
+    #ifdef MP_ENABLED
+    #pragma omp parallel for
+    for(int t=0; t < vac_strata.size(); t++){
+      //We calculate the derivatives for this specific stratum through the calculateDerivs() function.
+      vac_strata[t].calculateDerivs(foi_vt, foi_nvt, comp, crate_vt, crate_nvt);
+    }
+    //We add all those whose vaccine efficacy wanes across all vaccinated strata
+    for(int t=0; t < vac_strata.size(); t++){
+      wane_s += vac_strata[t].get_wane_s();
+      wane_vt += vac_strata[t].get_wane_vt();
+      wane_nvt += vac_strata[t].get_wane_nvt();
+      wane_b += vac_strata[t].get_wane_b();
+    }
+    #else
     for(int t=0; t < vac_strata.size(); t++){
       //We calculate the derivatives for this specific stratum through the calculateDerivs() function.
       vac_strata[t].calculateDerivs(foi_vt, foi_nvt, comp, crate_vt, crate_nvt);
@@ -668,6 +722,7 @@ public:
       wane_nvt += vac_strata[t].get_wane_nvt();
       wane_b += vac_strata[t].get_wane_b();
     }
+    #endif
     //All individuals whose vaccine efficacy has waned are added to the first stratum (unvaccinated), through the
     // updateDerivs() function
     vac_strata[0].updateDerivs(wane_s, wane_vt, wane_nvt, wane_b);
@@ -723,12 +778,20 @@ void vaccineCampaignEvent(int *n, double *t, double *y) {
   }
 }
 
+bool debug = false;
+
 //This function sets the model up, and stores the parameter values in memory. It is only called once when setting up
 // the model
 void initmod(void (* odeparms)(int *, double *)) {
 
   //We get the parms argument passed to deSolve as SEXP object
   SEXP sparms = get_deSolve_gparms_Rcpp();
+  
+  //#ifdef MP_ENABLED
+  //Rcpp::Rcout << "OMP enabled" << std::endl;
+  //#endif
+  
+  //debug = true;
   
   try {
     //Parse parameters passed to deSolve as Rcpp::List
@@ -773,6 +836,12 @@ void rt_initmod(void (* odeparms)(int *, double *)) {
 
   //We get the parms argument passed to deSolve as SEXP object
   SEXP sparms = get_rootSolve_gparms_Rcpp();
+  
+//#ifdef MP_ENABLED
+//  Rcpp::Rcout << "OMP enabled" << std::endl;
+//#endif
+  
+  debug = false;
   
   try {
     //Parse parameters passed to deSolve as Rcpp::List
@@ -824,9 +893,9 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
   //TODO: check if this is necessary
   if (ip[0] < 1) error("nout should be at least 1");
   
-  //if(time < 1){
+  //if(debug && (time < 1 | (time >= 40 & time < 41) | (time >= 80 & time < 81) | (time >= 120 & time < 121) | (time >= 160 & time < 161) | (time >= 200 & time < 201))){
   //  Rcpp::Rcout << "DEBUG: time: " << time << "; ip[0]: " << ip[0] << std::endl;
-  //  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  //  std::this_thread::sleep_for(std::chrono::milliseconds(5));
   //}
   
   //We loop through every cluster in the model, and update the state in each compartment. State is passed from deSolve
@@ -840,6 +909,10 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
   }
   
   //Process demographic changes (ageing and migration) and vaccinations
+  //can run in parallel if no migration in the model
+  #ifdef MP_ENABLED
+  #pragma omp parallel for
+  #endif
   for(int c = 0; c < n_clus; c++){
     clusters[c]->updateDemographics(clusters, n_clus, c); 
     clusters[c]->calculatePrev(); 
@@ -851,9 +924,12 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
     n_carr += arma::accu(clusters[c]->getCarriers());
   }
   
-  //Only continue with the model if the total number of carriers is larger than 2
+  //Only continue with the model if the total number of carriers is larger than 0
   if(n_carr > 0){
     //We calculate the ODEs within all clusters, which is done in the calculateDerivs() function
+    #ifdef MP_ENABLED
+    #pragma omp parallel for
+    #endif
     for(int c = 0; c < n_clus; c++){
       clusters[c]->calculateDerivs(clusters, n_clus, c, time);
     }

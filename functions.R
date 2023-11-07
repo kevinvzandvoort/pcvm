@@ -47,7 +47,8 @@ compileModel = function(cpp_file, shrd_lib_loc){
   
   #' Need to set additional compiler flags
   do.call(Sys.setenv, inline::getPlugin("RcppArmadillo")$env)
-  Sys.setenv(CLINK_CPPFLAGS = flag)
+  #change this to make omp optional
+  Sys.setenv(CLINK_CPPFLAGS = paste0(c(flag, "-lomp -DMP_ENABLED -fopenmp"), collapse = " "))
   Sys.setenv(PKG_CXXFLAGS="-std=c++14")
   
   #' Compile model
@@ -69,9 +70,9 @@ reshapeModelOutput = function(model_output, param.list){
   N_agegroups = param.list$n_agrp
   cluster_arms = param.list$trial_arms %>%
     lapply(function(x){
-      c("unvaccinated", names(x[["arms"]])) %>% lapply(function(arm_name){
+      c(names(x[["arms"]])) %>% lapply(function(arm_name){
         data.table(
-          dose = factor(arm_name, c("unvaccinated", names(x[["arms"]]))) %>% rep(length(compartments) * N_agegroups),
+          dose = factor(arm_name, c(names(x[["arms"]]))) %>% rep(length(compartments) * N_agegroups),
           compartment = factor(compartments, compartments) %>% rep(each = N_agegroups),
           age = 1:N_agegroups %>% rep(length(compartments)))
       }) %>% rbindlist})
@@ -160,9 +161,9 @@ eqStatesVaccinate = function(model_output, param.list){
   compartments = c("S", "VT", "NVT", "B")
   cluster_arms = param.list$trial_arms %>%
     lapply(function(x){
-      c("unvaccinated", names(x[["arms"]])) %>% lapply(function(arm_name){
+      c(names(x[["arms"]])) %>% lapply(function(arm_name){
         data.table(
-          dose = factor(arm_name, c("unvaccinated", names(x[["arms"]]))) %>% rep(length(compartments) * age_groups_model[, .N]),
+          dose = factor(arm_name, c(names(x[["arms"]]))) %>% rep(length(compartments) * age_groups_model[, .N]),
           compartment = factor(compartments, compartments) %>% rep(each = age_groups_model[, .N]),
           age = 1:age_groups_model[, .N] %>% rep(length(compartments)),
           value = switch(arm_name,
