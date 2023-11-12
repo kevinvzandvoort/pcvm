@@ -390,7 +390,8 @@ public:
       arate(Rcpp::as<arma::rowvec>(parms["ageout"])), travel(Rcpp::as<arma::mat>(parms["travel"])),
       migration(Rcpp::as<arma::mat>(parms["migration"]))
   {
-
+    //Rcpp::Rcout << "Create cluster: " << c << std::endl;
+    
     //We take the total number of required vaccinated strata from the trial_arms element in the parms list passed to
     // deSolve. Total number of arms will be the number provided + 1 for the unvaccinated
     Rcpp::List trial_arm = Rcpp::as<Rcpp::List>(parms["trial_arms"])[c];
@@ -482,6 +483,7 @@ public:
   
   //Deconstructor, empties the vector with the vaccine strata
   ~Cluster(){
+    //Rcpp::Rcout << "Destroy cluster" << std::endl;
     vac_strata.clear();
   }
   

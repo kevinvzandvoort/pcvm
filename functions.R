@@ -20,8 +20,8 @@ multinomial_log_ll = function(data){
 #' - there may be runs where deSolve returns an error, in which case we do not want the MCMC to fail
 tryCatchWE = function(expr){
   status = 0
-  wHandler = function(w) status <<- 1
-  eHandler = function(e) status <<- 2
+  wHandler = function(w) {status <<- 1; return(paste0(w, collapse = "; "))}
+  eHandler = function(e) {status <<- 1; return(paste0(e, collapse = "; "))}
   value = list(value = tryCatch(expr, error = eHandler, warning = wHandler), status = status)
   return(value)
 }
