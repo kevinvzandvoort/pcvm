@@ -1,0 +1,35 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "C:/PROGRA~1/R/R-42~1.0/include/**",
+                "C:/Users/Kevin/AppData/Local/R/win-library/4.2/Rcpp/include/**",
+                "C:/Users/Kevin/AppData/Local/R/win-library/4.2/RcppArmadillo/include/**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "compilerPath": "C:\\rtools42\\x86_64-w64-mingw32.static.posix\\bin\\g++.exe",
+            "compilerArgs": [
+                "-std=gnu++11",
+                "-DNDEBUG",
+                "-I../inst/include",
+                "-fopenmp",
+                "-lomp -DMP_ENABLED",
+                "-fopenmp",
+                "-std=c++14",
+                "-O2",
+                "-Wall",
+                "-mfpmath=sse",
+                "-msse2",
+                "-mstackrealign"
+            ],
+            "cppStandard": "c++14"
+        }
+    ],
+    "version": 4
+}
