@@ -160,7 +160,7 @@ reshapeModelOutput2 = function(result, model_params){
   }
   
   columns_match[, population := factor(population, names(model_params$trial_arms))]
-  columns_match[, vaccination_group := factor(vaccination_group, model_params$trial_arms %>% sapply(function(p) names(p[["arms"]])) %>% as.vector() %>% unique())]
+  columns_match[, vaccination_group := factor(vaccination_group, model_params$trial_arms %>% sapply(function(p) names(p[["arms"]])) %>% unlist() %>% as.vector() %>% unique())]
   if(incidence){
     columns_match[, outcome := factor(outcome, c("prevalence", "incidence"))]
     columns_match[, compartment := factor(compartment, c(compartments_prevalence, compartments_incidence))]
@@ -205,7 +205,7 @@ eqStatesVaccinate2 = function(model_output, model_params, pop_unvacc = NULL){
         }, pop) %>% rbindlist()}, populations) %>% rbindlist})
   
   model_input[, population := factor(population, names(model_params$trial_arms))]
-  model_input[, vaccination_group := factor(vaccination_group, model_params$trial_arms %>% sapply(function(p) names(p[["arms"]])) %>% as.vector() %>% unique())]
+  model_input[, vaccination_group := factor(vaccination_group, model_params$trial_arms %>% sapply(function(p) names(p[["arms"]])) %>% unlist() %>% as.vector() %>% unique())]
   model_input[, outcome := factor(outcome, c("prevalence"))]
   model_input[, compartment := factor(compartment, compartments_prevalence)]
   
@@ -745,6 +745,7 @@ runModel = function(initial_state, model_params, steady_state = FALSE, times = c
     } else {
       events = list(func="vaccineCampaignEvent",
                     time=campaign_times)
+      times = sort(unique(c(times, campaign_times)))
       result = lsode(
         y=initial_state, times=times, func = "derivs",
         parms = model_params, dllname = uniqueSharedObject(),
