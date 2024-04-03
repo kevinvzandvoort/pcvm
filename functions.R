@@ -728,14 +728,14 @@ uniqueSharedObject = function(){
 }
 
 #' Function that will be used in MCMC algorithm
-runModel = function(initial_state, model_params, steady_state = FALSE, times = c(0, 1), hmin = 0, hmax = NULL, rtol = 1e-06, atol = 1e-06, incidence = FALSE){
+runModel = function(initial_state, model_params, steady_state = FALSE, times = c(0, 1), hmin = 0, hmax = NULL, rtol = 1e-06, atol = 1e-06, incidence = FALSE, parallel = FALSE){
   nout_incidence = model_params$trial_arms %>% sapply(function(x) length(x[["arms"]])) %>% sum() * age_groups_model[, .N] * length(compartments_incidence)
   
   if(steady_state){
     #if(incidence) warning("currently not running incidence in steady state")
     result = runsteady(
       y=initial_state, func = "derivs",
-      initpar = model_params, dllname = uniqueSharedObject(),
+      initpar = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
       nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
       initfunc = "rt_initmod", jactype = "fullint",
       hmin = hmin, hmax = hmax, atol = atol, rtol = rtol) %>% tryCatchWE()
@@ -748,7 +748,7 @@ runModel = function(initial_state, model_params, steady_state = FALSE, times = c
     if(length(campaign_times) == 0){
       result = lsode(
         y=initial_state, times=times, func = "derivs",
-        parms = model_params, dllname = uniqueSharedObject(),
+        parms = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
         nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
         initfunc = "initmod", jactype = "fullint",
         hmin = hmin, hmax = hmax, atol = atol, rtol = rtol) %>% tryCatchWE
@@ -758,7 +758,7 @@ runModel = function(initial_state, model_params, steady_state = FALSE, times = c
       times = sort(unique(c(times, campaign_times)))
       result = lsode(
         y=initial_state, times=times, func = "derivs",
-        parms = model_params, dllname = uniqueSharedObject(),
+        parms = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
         nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
         initfunc = "initmod", jactype = "fullint",
         events = events, hmin = hmin, hmax = hmax, atol = atol, rtol = rtol) %>% tryCatchWE  
