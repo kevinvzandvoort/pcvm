@@ -717,7 +717,7 @@ uniqueSharedObject = function(){
     } else {
       #' recompile model
       compileModel(sprintf("%s/model/%s.cpp", PCVM_FOLDER, MODEL_NAME), "./model/build/",
-                   sprintf("%s.%s", new_file_name, .Platform$dynlib.ext))
+                   sprintf("%s%s", new_file_name, .Platform$dynlib.ext))
     }
     
   }
