@@ -31,10 +31,10 @@ tryCatchWE = function(expr){
 #' - TODO: figure out why
 #' - system('g++ -c -o ./model/build/Fit_by_arm_quick_v5.o ./model/Fit_by_arm_quick_v5.cpp -L/usr/lib/R/lib -lR -std=gnu++11 -shared -L/usr/lib/R/lib -Wl,-Bsymbolic-functions,-z,relro -I"/usr/share/R/include" -I"/home/lsh1604011/workspace/Dosing_schedule_and_fitting" -I"/home/lsh1604011/R/x86_64-pc-linux-gnu-library/4.0/Rcpp/include" -I"/home/lsh1604011/R/x86_64-pc-linux-gnu-library/4.0/RcppArmadillo/include" -fPIC -DNDEBUG -fopenmp -g -O3 -fdebug-prefix-map=/build/r-base-8T8CYO/r-base-4.0.3=. -fstack-protector-strong -Wformat -Werror=format-security -Wdate-time -D_FORTIFY_SOURCE=2 -g')
 #' - system('g++ -o ./model/build/Fit_by_arm_quick_v5.so ./model/build/Fit_by_arm_quick_v5.o -L/usr/lib/R/lib -lR -std=gnu++11 -shared -L/usr/lib/R/lib -Wl,-Bsymbolic-functions,-z,relro -I"/usr/share/R/include" -I"/home/lsh1604011/workspace/espicc_model" -I"/home/lsh1604011/R/x86_64-pc-linux-gnu-library/4.0/Rcpp/include" -fPIC -fopenmp -llapack -lblas -lgfortran -lm -lquadmath -L/usr/lib/R/lib -lR')
-compileModel = function(cpp_file, shrd_lib_loc){
+compileModel = function(cpp_file, shrd_lib_loc, shrd_lib_name = ""){
   if(!file.exists(cpp_file))
     stop("Cpp file does not exist")
-  shrd_lib_name = gsub(".cpp", .Platform$dynlib.ext, basename(cpp_file))
+  if(shrd_lib_name == "") shrd_lib_name = gsub(".cpp", .Platform$dynlib.ext, basename(cpp_file))
   if(file.exists(sprintf("%s/%s", shrd_lib_loc, shrd_lib_name)))
     file.remove(sprintf("%s/%s", shrd_lib_loc, shrd_lib_name))
   
@@ -710,7 +710,17 @@ uniqueSharedObject = function(){
   new_file_name = sprintf("%s_%s", MODEL_NAME, Sys.getpid())
   new_file_path = sprintf("./model/build/%s%s", new_file_name, .Platform$dynlib.ext)
   
-  if(!file.exists(new_file_path)) file.copy(main_file_path, new_file_path)
+  if(!file.exists(new_file_path)){
+    if(Sys.info()["sysname"] == "Windows"){
+      #' copy compiled model
+      file.copy(main_file_path, new_file_path)  
+    } else {
+      #' recompile model
+      compileModel(sprintf("%s/model/%s.cpp", PCVM_FOLDER, MODEL_NAME), "./model/build/",
+                   sprintf("%s.%s", new_file_name, .Platform$dynlib.ext))
+    }
+    
+  }
   if(!is.loaded("derivs", new_file_name)) dyn.load(new_file_path)
   if(!is.loaded("derivs", new_file_name)) stop("MetaVax is not loaded")
   
