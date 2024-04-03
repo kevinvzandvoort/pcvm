@@ -713,13 +713,16 @@ uniqueSharedObject = function(){
   if(!file.exists(new_file_path)){
     if(Sys.info()["sysname"] == "Windows"){
       #' copy compiled model
-      file.copy(main_file_path, new_file_path)  
+      file.copy(main_file_path, new_file_path)
     } else {
       #' recompile model
-      compileModel(sprintf("%s/model/%s.cpp", PCVM_FOLDER, MODEL_NAME), "./model/build/",
+      #' - need to first copy cpp file so the .o file will be unique
+      #' - need to update this, first compile .o file, then only need to be linked in unique .so
+      file.copy(sprintf("%s/model/%s.cpp", PCVM_FOLDER, MODEL_NAME), sprintf("%s/model/%s.cpp", PCVM_FOLDER, new_file_name))
+      compileModel(sprintf("%s/model/%s.cpp", PCVM_FOLDER, new_file_name), "./model/build/",
                    sprintf("%s%s", new_file_name, .Platform$dynlib.ext))
+      file.remove(sprintf("%s/model/%s.cpp", PCVM_FOLDER, new_file_name))
     }
-    
   }
   if(!is.loaded("derivs", new_file_name)) dyn.load(new_file_path)
   if(!is.loaded("derivs", new_file_name)) stop("MetaVax is not loaded")
