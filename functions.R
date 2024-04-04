@@ -31,10 +31,10 @@ tryCatchWE = function(expr){
 #' - TODO: figure out why
 #' - system('g++ -c -o ./model/build/Fit_by_arm_quick_v5.o ./model/Fit_by_arm_quick_v5.cpp -L/usr/lib/R/lib -lR -std=gnu++11 -shared -L/usr/lib/R/lib -Wl,-Bsymbolic-functions,-z,relro -I"/usr/share/R/include" -I"/home/lsh1604011/workspace/Dosing_schedule_and_fitting" -I"/home/lsh1604011/R/x86_64-pc-linux-gnu-library/4.0/Rcpp/include" -I"/home/lsh1604011/R/x86_64-pc-linux-gnu-library/4.0/RcppArmadillo/include" -fPIC -DNDEBUG -fopenmp -g -O3 -fdebug-prefix-map=/build/r-base-8T8CYO/r-base-4.0.3=. -fstack-protector-strong -Wformat -Werror=format-security -Wdate-time -D_FORTIFY_SOURCE=2 -g')
 #' - system('g++ -o ./model/build/Fit_by_arm_quick_v5.so ./model/build/Fit_by_arm_quick_v5.o -L/usr/lib/R/lib -lR -std=gnu++11 -shared -L/usr/lib/R/lib -Wl,-Bsymbolic-functions,-z,relro -I"/usr/share/R/include" -I"/home/lsh1604011/workspace/espicc_model" -I"/home/lsh1604011/R/x86_64-pc-linux-gnu-library/4.0/Rcpp/include" -fPIC -fopenmp -llapack -lblas -lgfortran -lm -lquadmath -L/usr/lib/R/lib -lR')
-compileModel = function(cpp_file, shrd_lib_loc){
+compileModel = function(cpp_file, shrd_lib_loc, shrd_lib_name = ""){
   if(!file.exists(cpp_file))
     stop("Cpp file does not exist")
-  shrd_lib_name = gsub(".cpp", .Platform$dynlib.ext, basename(cpp_file))
+  if(shrd_lib_name == "") shrd_lib_name = gsub(".cpp", .Platform$dynlib.ext, basename(cpp_file))
   if(file.exists(sprintf("%s/%s", shrd_lib_loc, shrd_lib_name)))
     file.remove(sprintf("%s/%s", shrd_lib_loc, shrd_lib_name))
   
@@ -710,7 +710,20 @@ uniqueSharedObject = function(){
   new_file_name = sprintf("%s_%s", MODEL_NAME, Sys.getpid())
   new_file_path = sprintf("./model/build/%s%s", new_file_name, .Platform$dynlib.ext)
   
-  if(!file.exists(new_file_path)) file.copy(main_file_path, new_file_path)
+  if(!file.exists(new_file_path)){
+    if(Sys.info()["sysname"] == "Windows"){
+      #' copy compiled model
+      file.copy(main_file_path, new_file_path)
+    } else {
+      #' recompile model
+      #' - need to first copy cpp file so the .o file will be unique
+      #' - need to update this, first compile .o file, then only need to be linked in unique .so
+      file.copy(sprintf("%s/model/%s.cpp", PCVM_FOLDER, MODEL_NAME), sprintf("%s/model/%s.cpp", PCVM_FOLDER, new_file_name))
+      compileModel(sprintf("%s/model/%s.cpp", PCVM_FOLDER, new_file_name), "./model/build/",
+                   sprintf("%s%s", new_file_name, .Platform$dynlib.ext))
+      file.remove(sprintf("%s/model/%s.cpp", PCVM_FOLDER, new_file_name))
+    }
+  }
   if(!is.loaded("derivs", new_file_name)) dyn.load(new_file_path)
   if(!is.loaded("derivs", new_file_name)) stop("MetaVax is not loaded")
   
@@ -718,14 +731,14 @@ uniqueSharedObject = function(){
 }
 
 #' Function that will be used in MCMC algorithm
-runModel = function(initial_state, model_params, steady_state = FALSE, times = c(0, 1), hmin = 0, hmax = NULL, rtol = 1e-06, atol = 1e-06, incidence = FALSE){
+runModel = function(initial_state, model_params, steady_state = FALSE, times = c(0, 1), hmin = 0, hmax = NULL, rtol = 1e-06, atol = 1e-06, incidence = FALSE, parallel = FALSE){
   nout_incidence = model_params$trial_arms %>% sapply(function(x) length(x[["arms"]])) %>% sum() * age_groups_model[, .N] * length(compartments_incidence)
   
   if(steady_state){
     #if(incidence) warning("currently not running incidence in steady state")
     result = runsteady(
       y=initial_state, func = "derivs",
-      initpar = model_params, dllname = uniqueSharedObject(),
+      initpar = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
       nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
       initfunc = "rt_initmod", jactype = "fullint",
       hmin = hmin, hmax = hmax, atol = atol, rtol = rtol) %>% tryCatchWE()
@@ -738,7 +751,7 @@ runModel = function(initial_state, model_params, steady_state = FALSE, times = c
     if(length(campaign_times) == 0){
       result = lsode(
         y=initial_state, times=times, func = "derivs",
-        parms = model_params, dllname = uniqueSharedObject(),
+        parms = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
         nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
         initfunc = "initmod", jactype = "fullint",
         hmin = hmin, hmax = hmax, atol = atol, rtol = rtol) %>% tryCatchWE
@@ -748,7 +761,7 @@ runModel = function(initial_state, model_params, steady_state = FALSE, times = c
       times = sort(unique(c(times, campaign_times)))
       result = lsode(
         y=initial_state, times=times, func = "derivs",
-        parms = model_params, dllname = uniqueSharedObject(),
+        parms = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
         nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
         initfunc = "initmod", jactype = "fullint",
         events = events, hmin = hmin, hmax = hmax, atol = atol, rtol = rtol) %>% tryCatchWE  
