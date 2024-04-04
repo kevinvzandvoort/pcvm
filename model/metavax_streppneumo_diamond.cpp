@@ -125,10 +125,10 @@ public:
   calculateDerivs that calculates the FOI and calls the calculateDerivs function in each VaccinationGroup
 */ 
 class Population : public BasePopulation {
-public:
+  public:
+    double comp;
     arma::mat beta_vt, beta_nvt;
     arma::rowvec crate_vt, crate_nvt, prev_vt, prev_nvt, foi_vt, foi_nvt;
-    double comp;
     arma::rowvec adj_acq_vt_on, adj_acq_nvt_on, adj_acq_vt_off, adj_acq_nvt_off;
     double adj_acq_start, adj_acq_stop;
 

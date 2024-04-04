@@ -12,10 +12,8 @@ class Compartment{
     public:
     //Constructor
     Compartment(int n_agrp, arma::rowvec &arate, arma::rowvec &arate_corr, double prop_born)
-        : n_agrp(n_agrp), arate(arate), arate_corr(arate_corr), prop_born(prop_born)
+        : n_agrp(n_agrp), prop_born(prop_born), arate(arate), arate_corr(arate_corr)
     {
-        //Rcpp::Rcout << "DEBUG: Create Compartment; n_agrp: " << n_agrp << std::endl;
-        //Preallocate memory for efficiency
         value = delta = delta2 = age_none = age_out = age_in = a0_v0_w1_m0 = a0_v0_w1_m1 = a0_v0_w0_m1 = a1_v0_w0_m0 = a1_v0_w1_m0 =
         a1_v0_w1_m1 = a1_v0_w0_m1 = a1_v1_w0_m0 = a1_v1_w0_m1 = vac_c_out = arma::rowvec(n_agrp, arma::fill::zeros);
     }

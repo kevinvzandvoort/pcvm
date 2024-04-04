@@ -7,8 +7,8 @@ class VaccinationGroup;
 //A BasePopulation object represents an individual cluster or arm in the trial. It will hold multiple vaccinated strata
 class BasePopulation{
 public:
-  arma::rowvec arate, arate_corr;
   int n_agrp;
+  arma::rowvec arate, arate_corr;
   int n_vstrat;
   std::vector<std::unique_ptr<VaccinationGroup>> vac_strata; 
   arma::rowvec deqs_all, deqs;

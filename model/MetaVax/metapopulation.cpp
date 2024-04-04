@@ -210,7 +210,7 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
   //std::this_thread::sleep_for(std::chrono::milliseconds(5));
   for(int p = 0; p < n_pops; p++){
     arma::rowvec deqs = populations[p]->getDerivs();
-    for(int d = 0; d < deqs.size(); d++){
+    for(int d = 0; d < (int) deqs.size(); d++){
       ydot[i] = deqs(d);
       i += 1;
     }
@@ -221,7 +221,7 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
     int i = 0;
     for(int p = 0; p < n_pops; p++){
       arma::rowvec incidence = populations[p]->getIncidence();
-      for(int d = 0; d < incidence.size(); d++){
+      for(int d = 0; d < (int) incidence.size(); d++){
         yout[i] = incidence(d);
         i += 1;
       }
