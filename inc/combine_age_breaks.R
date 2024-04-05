@@ -95,11 +95,7 @@ setAgeBreaks = function(age_breaks, minage = set_units(0, "years"), maxage = set
                                                                         rev %>% .[1] + 1]) %>%
                                          names, mode = "standard"),
                            age_breaks_types[which(age_breaks_types == label) %>% rev %>% .[1] + 1])
-        ##last_name = paste0(age_breaks_years[age_breaks_types == label][max(which(is_seq))] %>%
-        ##                     set_units(unit, mode = "standard"), label, "-",
-        ##                            (age_breaks_years[which(age_breaks_types == label) %>% rev %>% .[1] + 1] %>%
-        ##                     set_units(unit, mode = "standard") - set_units(1, unit, mode = "standard")),
-        ##                   age_breaks_types[which(age_breaks_types == label) %>% rev %>% .[1] + 1])
+        
         warning(sprintf("Age-group '%s' spans a range between different types, check to make sure this is correct",
                         last_name))
         seqs[length(seqs)] = last_name
@@ -174,72 +170,6 @@ combineAgeBreaks = function(x, y, measure.vars, method = c("sum", "mean")[2], by
   
   y[, x %>% cbind(overlap %*% as.matrix(.SD[, measure.vars, with=FALSE])), by=by]
 }
-
-#y[, {
-#  #' calculate overlapping age groups - this is currently done for every group provided in by, could be done once if
-#  #' age groups in y are always the same
-#  if(method == "sum"){
-#    overlap = matrix(nrow = x[, .N], ncol = .SD[, .N])
-#    for(i in 1:x[, .N]){
-#      for(j in 1:.SD[, .N]){
-#        overlap[i, j] = max(0, (min(.SD[j, to], x[i, to]) - max(x[i, from], .SD[j, from])))/.SD[j, to-from]
-#      }
-#    }    
-#  } else if(method == "mean"){
-#    overlap = matrix(nrow = .SD[, .N], ncol = x[, .N], dimnames=list(.SD[, name], x[, name]))
-#    for(i in 1:.SD[, .N]){
-#      for(j in 1:x[, .N]){
-#        overlap[i, j] = max(0, (min(x[j, to], .SD[i, to]) - max(.SD[i, from], x[j, from])))/x[j, to-from]
-#      }
-#    }
-#    overlap = t(overlap)
-#  } else {
-#    stop(sprintf("Method %s is not implemented", method))
-#  }
-#  
-#  x %>% cbind(overlap %*% as.matrix(.SD[, measure.vars, with=FALSE]))
-#}, by=by]
-#
-##' calculate overlapping age groups - this is done once for all groups, but would break if different age groups are present for different groups
-#y_ages = unique(y[, c("name", "from", "to")])
-#if(method == "sum"){
-#  overlap = matrix(nrow = x[, .N], ncol = y_ages[, .N])
-#  for(i in 1:x[, .N]){
-#    for(j in 1:y_ages[, .N]){
-#      overlap[i, j] = max(0, (min(y_ages[j, to], x[i, to]) - max(x[i, from], y_ages[j, from])))/y_ages[j, to-from]
-#    }
-#  }    
-#} else if(method == "mean"){
-#  overlap = matrix(nrow = y_ages[, .N], ncol = x[, .N], dimnames=list(y_ages[, name], x[, name]))
-#  for(i in 1:y_ages[, .N]){
-#    for(j in 1:x[, .N]){
-#      overlap[i, j] = max(0, (min(x[j, to], y_ages[i, to]) - max(y_ages[i, from], x[j, from])))/x[j, to-from]
-#    }
-#  }
-#  overlap = t(overlap)
-#} else {
-#  stop(sprintf("Method %s is not implemented", method))
-#}
-#
-#y[, x %>% cbind(overlap %*% as.matrix(.SD[, measure.vars, with=FALSE])), by=by]
-#
-##' for sum
-#overlap = matrix(nrow = x[, .N], ncol = y[, .N], dimnames=list(x[, name], y[, name]))
-#for(i in 1:x[, .N]){
-#  for(j in 1:y[, .N]){
-#    overlap[i, j] = max(0, (min(y[j, to], x[i, to]) - max(x[i, from], y[j, from])))/y[j, to-from]
-#  }
-#}
-#x %>% cbind(overlap %*% as.matrix(y[, c("v1", "v2")]))
-#
-##' for mean
-#overlap = matrix(nrow = y[, .N], ncol = x[, .N], dimnames=list(y[, name], x[, name]))
-#for(i in 1:y[, .N]){
-#  for(j in 1:x[, .N]){
-#    overlap[i, j] = max(0, (min(x[j, to], y[i, to]) - max(y[i, from], x[j, from])))/x[j, to-from]
-#  }
-#}
-#x %>% cbind(t(overlap) %*% as.matrix(y[, c("v1", "v2")]))
 
 x = setAgeBreaks(c(c(1:12) %>% set_units("month"), c(1:5, 10, 15, 20, 50, 70) %>% set_units("year")))
 y = setAgeBreaks(sample(1:100, 4, replace=FALSE)) %>% .[, c("v1", "v2") := .(rpois(5, 3), rpois(5, 9))]

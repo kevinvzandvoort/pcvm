@@ -1,20 +1,3 @@
-##' Adjust a case carrier ratio based on malnutrition prevalence
-#adjustCaseCarrierRatio = function(ccr, kilifi_maln_prev = 0.2, maln_RR = 2){
-#  base_risk = ccr/(1 - kilifi_maln_prev + kilifi_maln_prev*maln_RR)
-#  return(base_risk)
-#}
-
-##' Calculate the multinomial log likelihood  
-#multinomial_log_ll = function(data){
-#  if(nrow(data[modelled <= 0]) > 0){
-#    warning("At least one modelled value was <0, rejecting the proposal.")
-#  } else
-#    data[, LL := observed * log(modelled)] %>%
-#    .[, .(LL = sum(LL)), by = c("age")] %>%
-#    .[, LL] %>%
-#    return
-#}
-
 #' tryCatch to wrap around the deSolve functions
 #' - there may be runs where deSolve returns an error, in which case we do not want the MCMC to fail
 tryCatchWE = function(expr){
@@ -60,69 +43,6 @@ compileModel = function(cpp_file, shrd_lib_loc, shrd_lib_name = ""){
   if(file.exists(gsub(".cpp", ".o", cpp_file)))
     file.remove(gsub(".cpp", ".o", cpp_file))
 }
-
-#reshapeModelOutput = function(model_output, param.list){
-#  if(PCVM_VERSION == 2){
-#    compartments = c("S", "VT", "NVT", "VT2", "B", "NVT2")
-#  } else {
-#    compartments = c("S", "VT", "NVT", "B")
-#  }
-#  N_agegroups = param.list$n_agrp
-#  cluster_arms = param.list$trial_arms %>%
-#    lapply(function(x){
-#      c(names(x[["arms"]])) %>% lapply(function(arm_name){
-#        data.table(
-#          dose = factor(arm_name, c(names(x[["arms"]]))) %>% rep(length(compartments) * N_agegroups),
-#          compartment = factor(compartments, compartments) %>% rep(each = N_agegroups),
-#          age = 1:N_agegroups %>% rep(length(compartments)))
-#      }) %>% rbindlist})
-#  for(cl in 1:length(param.list$trial_arms)){
-#    clname = names(param.list$trial_arms)[cl]
-#    cluster_arms[[cl]][, cluster := factor(clname, names(param.list$trial_arms))]
-#  }
-#  cluster_arms = cluster_arms %>% rbindlist
-#  cluster_arms = cluster_arms[, c("cluster", "dose", "compartment", "age")] %>% setorder(cluster, dose, compartment, age)
-#  cluster_arms[, compartment_index := as.character(1:.N)]
-#  
-#  out_prevalence = model_output[, c(colnames(model_output) %>% subset(!grepl("incidence", .) & !grepl("N_", .))), with=FALSE] %>%
-#    melt(id.vars = "time", variable.name = "compartment_index", value.name = "prevalence")
-#  
-#  if(any(colnames(model_output) %>% grepl("incidence", .))){
-#    out_incidence = model_output[, c("time", colnames(model_output) %>% subset(grepl("incidence", .))), with=FALSE] %>%
-#      melt(id.vars = "time", variable.name = "compartment_index", value.name = "incidence") %>%
-#      .[, compartment_index := compartment_index %>% gsub("incidence_", "", .)]
-#    
-#    out = out_prevalence %>% merge(out_incidence, by=c("compartment_index", "time"))
-#    out = out %>% melt(measure.vars = c("prevalence", "incidence"))
-#  } else {
-#    out = out_prevalence %>% melt(measure.vars = c("prevalence"))
-#  }
-#  
-#  out = out %>% merge(cluster_arms, by = c("compartment_index"), all = TRUE)
-#  out %>% setorder(variable, cluster, dose, compartment, age, time)
-#  if(PCVM_VERSION == 2){
-#    out[variable == "incidence", compartment := switch(as.character(compartment), "S" = "S_VT", "VT" = "S_NVT", "NVT" = "VT_VT2", "VT2" = "VT_B", "B" = "NVT_B", "NVT2" = "NVT_NVT2"), by = c("compartment")]
-#  } else {
-#    out[variable == "incidence", compartment := switch(as.character(compartment), "S" = "S_VT", "VT" = "S_NVT", "NVT" = "VT_B", "B" = "NVT_B"), by = c("compartment")]
-#  }
-#  
-#  out = out[, c("variable", "cluster", "dose", "compartment", "age", "time", "value")]
-#  
-#  if(any(colnames(model_output) %>% grepl("N_", .))){
-#    out_population = model_output[, c("time", colnames(model_output) %>% subset(grepl("N_", .))), with=FALSE] %>%
-#      melt(id.vars = "time", variable.name = "cluster_age_index", value.name = "prevalence") %>%
-#      .[, cluster_age_index := cluster_age_index %>% gsub("N_", "", .) %>% as.numeric()] %>%
-#      merge(data.table(age = 1:N_agegroups %>% rep(length(param.list$trial_arms)),
-#                       cluster = names(param.list$trial_arms) %>% rep(each = N_agegroups),
-#                       cluster_age_index = seq_len(N_agegroups * length(param.list$trial_arms))),
-#            by = "cluster_age_index") %>% .[, c("compartment", "variable", "value") := .("N", "prevalence", prevalence)] %>%
-#      .[, c("variable", "cluster", "compartment", "age", "time", "value")]
-#    
-#    out = out %>% rbind(out_population, fill=TRUE)
-#  }
-#  
-#  return(out)
-#}
 
 reshapeModelOutput2 = function(result, model_params){
   result = result %>% as.data.table()
@@ -213,309 +133,6 @@ eqStatesVaccinate2 = function(model_output, model_params, pop_unvacc = NULL){
   
   return(model_input %>% .[])
 }
-
-#statePropModelOutput = function(model_output, param.list, catchup_ages = 0:14){
-#  if(length(model_output[, unique(time)]) != 1) stop("Table model_output needs to be for a single timestep")
-#  if(length(param.list$trial_arms) == 0) stop("There are no vaccine arms specified")
-#  n_catchup_arms = sum(sapply(param.list$trial_arms, function(x) "catchup" %in% names(x)))
-#  apply_catchup = TRUE
-#  if(n_catchup_arms == 0){
-#    apply_catchup = FALSE
-#    warning("There is no catchup dose specified in the trial_arms argument. No catchup campaign will be implemented and variable catchup_ages will be ignored")
-#  } else if(n_catchup_arms > 0 & n_catchup_arms < length(param.list$trial_arms)){
-#    stop("Some trial_arms have catchup campaign specified and some have not. States will not be correctly calculated for arms where no catchup campaign is specified")
-#  }
-#  
-#  n_agrp = param.list$n_agrp
-#  n_clus = length(param.list$trial_arms)
-#  state_prop = numeric(sum(sapply(param.list$trial_arms, length) + 1) * ifelse(PCVM_VERSION == 2, 6, 4) * n_agrp)
-#  i=1
-#  for(cl in 1:n_clus)
-#    for(d in c("unvaccinated", names(param.list$trial_arms[[cl]]))){
-#      state_prop[i:(i + ifelse(PCVM_VERSION == 2, 6, 4) * n_agrp - 1)] = switch(
-#        d,
-#        "unvaccinated" = model_output[order(compartment, age), .(value = value * ifelse(apply_catchup, !age %in% catchup_ages, 1)), by=seq_len(model_output[, .N])][, value],
-#        "catchup" = model_output[order(compartment, age), .(value = value * ifelse(apply_catchup, age %in% catchup_ages, 1)), by=seq_len(model_output[, .N])][, value],
-#        rep(0, model_output[, .N])
-#      )
-#      i = i + ifelse(PCVM_VERSION == 2, 6, 4) * n_agrp
-#    }
-#  return(state_prop)
-#}
-
-#eqStatesVaccinate = function(model_output, param.list){
-#  if(length(model_output[, unique(time)]) != 1) stop("Table model_output needs to be for a single timestep")
-#  
-#  model_output %>% setorder(cluster, dose, compartment, age)
-#  
-#  compartments = c("S", "VT", "NVT", "B")
-#  cluster_arms = param.list$trial_arms %>%
-#    lapply(function(x){
-#      c(names(x[["arms"]])) %>% lapply(function(arm_name){
-#        data.table(
-#          dose = factor(arm_name, c(names(x[["arms"]]))) %>% rep(length(compartments) * age_groups_model[, .N]),
-#          compartment = factor(compartments, compartments) %>% rep(each = age_groups_model[, .N]),
-#          age = 1:age_groups_model[, .N] %>% rep(length(compartments)),
-#          value = switch(arm_name,
-#                         "unvaccinated" = rep(1, length(compartments) * age_groups_model[, .N]) - {
-#                           if(length(x[["arms"]]) == 0) 0 else
-#                             x[["arms"]] %>% sapply(function(x) x[["catchup_coverage"]]) %>%
-#                             rowSums %>% rep(length(compartments))},
-#                         x[["arms"]][[arm_name]][["catchup_coverage"]]))
-#      }) %>% rbindlist})
-#  for(cl in 1:length(param.list$trial_arms)){
-#    clname = names(param.list$trial_arms)[cl]
-#    cluster_arms[[cl]][, cluster := factor(clname, names(param.list$trial_arms))]
-#  }
-#  cluster_arms = cluster_arms %>% rbindlist
-#  cluster_arms = cluster_arms[, c("cluster", "dose", "compartment", "age", "value")] %>% setorder(cluster, dose, compartment, age)
-#  model_output[, c("cluster", "dose", "compartment") := .(factor(cluster, levels(cluster_arms$cluster)),
-#                                                          factor(dose, levels(cluster_arms$dose)),
-#                                                          factor(compartment, levels(cluster_arms$compartment)))]
-#  cluster_arms = cluster_arms %>% merge(model_output[,-"dose"], by = c("cluster", "compartment", "age")) %>%
-#    .[, state := value.x * value.y] %>% .[, -c("value.x", "value.y")]
-#  
-#  cluster_arms = cluster_arms[, c("cluster", "dose", "compartment", "age", "state")] %>% setorder(cluster, dose, compartment, age)
-#  return(cluster_arms)
-#}
-
-#adaptiveMCMC = function(
-#  calculateLL, model_params, updateParameters, model_params_prior, model_params_prior_covmat = NULL,
-#  mcmc_steps = 500000, mcmc_adapt_size_start = 1000, mcmc_adapt_size_cooling = 0.999, mcmc_adapt_shape_start = 1000,
-#  mcmc_adapt_shape_stop = 1000, mcmc_scaling_factor_max = 50,
-#  output_file = sprintf("%s/MCMC_with6A_1.txt", OUTPUT_FOLDER),
-#  model_output_folder = sprintf("%s/%s", OUTPUT_FOLDER, "model_output")
-#){
-#  dir.create(model_output_folder)
-#  
-#  model_params_current = model_params_prior[, c("variable", "mean")] %>% (function(x){z=x[, mean]; names(z)=x[, variable]; return(z)})
-#  model_params = updateParameters(
-#    model_params_current %>% t %>% as.data.table %>% melt(id.vars=character(0)),
-#    model_params)
-#  
-#  #Placeholders for return values
-#  mcmc_adapt_shape_start_at = NA_integer_
-#  mcmc_adapt_shape_stop_at = NA_integer_
-#  
-#  mcmc_out_settings = list(
-#    list(param = "mcmc_steps", value = mcmc_steps),
-#    list(param = "mcmc_adapt_size_start", value = mcmc_adapt_size_start),
-#    list(param = "mcmc_adapt_size_cooling", value = mcmc_adapt_size_cooling),
-#    list(param = "mcmc_adapt_shape_start", value = mcmc_adapt_shape_start),
-#    list(param = "mcmc_adapt_shape_start_at", value = NA_integer_),
-#    list(param = "mcmc_adapt_shape_stop", value = mcmc_adapt_shape_stop),
-#    list(param = "mcmc_adapt_shape_stop_at", value = NA_integer_),
-#    list(param = "mcmc_scaling_factor_max", value = mcmc_scaling_factor_max)) %>%
-#    lapply(as.data.table) %>% rbindlist
-#  fwrite(mcmc_out_settings, sprintf("%s/mcmc_out_settings.csv", OUTPUT_FOLDER))
-#  
-#  updateCovMat = function(model_params_covmat_empirical, model_params_mean, model_params_current, i){
-#    model_params_residual = model_params_current - model_params_mean
-#    
-#    model_params_covmat_empirical = (
-#      model_params_covmat_empirical * (i - 1) +
-#        (i - 1)/i * model_params_residual %*% t(model_params_residual)
-#    )/i
-#    
-#    model_params_mean = model_params_mean + model_params_residual/i
-#    
-#    return(list(model_params_covmat_empirical = model_params_covmat_empirical, model_params_mean = model_params_mean))
-#  }
-#  
-#  mcmc_params = matrix(NA, nrow = mcmc_steps, ncol = nrow(model_params_prior) + 3)
-#  colnames(mcmc_params) = c(model_params_prior[, variable], c("logprior", "loglikelihood", "logposterior"))
-#  
-#  mcmc_adapting_size = FALSE
-#  mcmc_adapting_shape = FALSE
-#  mcmc_adapt_shape_i = 0
-#  mcmc_acceptance_rate = 0
-#  mcmc_scaling_factor = 1
-#  proposed_accepted = 0
-#  
-#  model_params_covmat_proposed = model_params_prior_covmat
-#  if(is.null(model_params_covmat_proposed)){
-#    model_params_covmat_proposed = matrix(
-#      diag(model_params_prior[, sd]^2, nrow = nrow(model_params_prior)), nrow = nrow(model_params_prior),
-#      dimnames = list(model_params_prior[, variable], model_params_prior[, variable]))
-#  }
-#  
-#  model_params_covmat_proposed_init = model_params_covmat_proposed
-#  model_params_current = model_params_prior[, c("variable", "mean")] %>% (function(x){z=x[, mean]; names(z)=x[, variable]; return(z)})
-#  model_params_mean = model_params_current
-#  
-#  model_params = updateParameters(
-#    model_params_current %>% t %>% as.data.table %>% melt(id.vars=character(0)),
-#    model_params)
-#  
-#  #' Log-likelihood initial parameters
-#  model_output = calculateLL(model_params)
-#  
-#  priorLikelihood = function(theta, param_priors = priors, combine=TRUE){
-#    pl = numeric(length(theta))
-#    for(i in 1:length(theta)){
-#      pl[i] = param_priors$prior[[i]](theta[i])
-#    }
-#    if(combine) return(sum(pl)) else return(pl)
-#  }
-#  
-#  log_likelihood_current = model_output$log_ll_total
-#  log_prior_current = priorLikelihood(model_params_current)
-#  log_posterior_current = log_likelihood_current + log_prior_current
-#  
-#  #' Initial empirical covariance matrix is 0 everywhere
-#  model_params_covmat_empirical = model_params_covmat_proposed
-#  model_params_covmat_empirical[, ] = 0
-#  
-#  z = 0
-#  for(i in 1:mcmc_steps){
-#    
-#    if(i >= mcmc_adapt_size_start && mcmc_adapt_shape_i <= mcmc_adapt_shape_stop){
-#      if(!mcmc_adapting_shape && mcmc_adapt_shape_i == 0){
-#        if(!mcmc_adapting_size){
-#          mcmc_adapting_size = TRUE
-#          message(sprintf("%s (%s%%) - %s - Start adapting size of covariance matrix",
-#                          i, round(100*i/mcmc_steps, 1), Sys.time())) 
-#        }
-#        #' At every iteration, update initial covariance matrix with scaling factor, aim for acceptance rate of 0.234
-#        mcmc_scaling_multiplier = exp(mcmc_adapt_size_cooling^(i - mcmc_adapt_size_start) * (mcmc_acceptance_rate - 0.234))
-#        mcmc_scaling_factor = mcmc_scaling_factor * mcmc_scaling_multiplier
-#        mcmc_scaling_factor = min(c(mcmc_scaling_factor, mcmc_scaling_factor_max))
-#        model_params_covmat_proposed_new = mcmc_scaling_factor^2 * model_params_covmat_proposed_init
-#        if(!(any(diag(model_params_covmat_proposed_new) < .Machine$double.eps))){
-#          model_params_covmat_proposed = model_params_covmat_proposed_new
-#        }
-#      }
-#      
-#      if(mcmc_acceptance_rate*i >= mcmc_adapt_shape_start){
-#        if(mcmc_adapting_size){
-#          mcmc_adapting_size = FALSE
-#          mcmc_adapting_shape = TRUE
-#          
-#          mcmc_adapt_shape_start_at = i
-#          mcmc_out_settings[param == "mcmc_adapt_shape_start_at", value := mcmc_adapt_shape_start_at]
-#          fwrite(mcmc_out_settings, sprintf("%s/mcmc_out_settings.csv", OUTPUT_FOLDER))
-#          
-#          message(sprintf("%s (%s%%) - %s - Stop adapting size of covariance matrix",
-#                          i, round(100*i/mcmc_steps, 1), Sys.time()))
-#          message(sprintf("%s (%s%%) - %s - Start adapting shape of covariance matrix",
-#                          i, round(100*i/mcmc_steps, 1), Sys.time()))
-#          
-#          #WHY update again? Keep old scaling fator
-#          mcmc_scaling_factor = 2.38/sqrt(nrow(model_params_prior))
-#        }
-#        
-#        if(mcmc_adapting_shape){
-#          if(mcmc_adapt_shape_i < mcmc_adapt_shape_stop){
-#            #' Scale empirical covariance matrix
-#            model_params_covmat_proposed = mcmc_scaling_factor^2 * model_params_covmat_empirical
-#            mcmc_adapt_shape_i = mcmc_adapt_shape_i + mcmc_proposed_accepted  
-#          } else {
-#            mcmc_adapting_shape = FALSE
-#            message(sprintf("%s (%s%%) - %s - Stop adapting shape of covariance matrix",
-#                            i, round(100*i/mcmc_steps, 1), Sys.time()))
-#            
-#            mcmc_adapt_shape_stop_at = i
-#            mcmc_out_settings[param == "mcmc_adapt_shape_stop_at", value := mcmc_adapt_shape_stop_at]
-#            fwrite(mcmc_out_settings, sprintf("%s/mcmc_out_settings.csv", OUTPUT_FOLDER))
-#          } 
-#        }
-#      }
-#    }
-#    
-#    #' Ensure none of the variances are 0
-#    if(any(diag(model_params_covmat_proposed) < .Machine$double.eps)){
-#      print(model_params_covmat_proposed)
-#      stop("Non-positive definite covariance matrix")
-#    }
-#    
-#    #' Sample new set of parameters
-#    model_params_proposed = tmvtnorm::rtmvnorm(
-#      n = 1, mean = model_params_current, sigma = model_params_covmat_proposed, lower = model_params_prior[, min],
-#      upper = model_params_prior[, max]) %>% as.numeric %>% (function(x){names(x)=priors[, variable]; return(x)})
-#    
-#    model_params = updateParameters(
-#      model_params_proposed %>% t %>% as.data.table %>% melt(id.vars=character(0)),
-#      model_params)
-#    
-#    #' Run the model and calculate the Log-Likelihood
-#    model_output = calculateLL(model_params)
-#    log_likelihood_proposed = model_output$log_ll_total
-#    log_prior_proposed = priorLikelihood(model_params_proposed)
-#    log_posterior_proposed = log_likelihood_proposed + log_prior_proposed
-#    
-#    #' Compute the Metropolis-Hastings ratio (log-scale)
-#    log_acceptance_ratio = log_posterior_proposed - log_posterior_current
-#    
-#    #' Adjust the MH ratio to account for truncated mvnorm prior
-#    log_acceptance_ratio = log_acceptance_ratio + tmvtnorm::dtmvnorm(
-#      x = model_params_current, mean = model_params_proposed, sigma = model_params_covmat_proposed, lower = model_params_prior[, min],
-#      upper = model_params_prior[, max], log = TRUE)
-#    
-#    #' Check if proposal is accepted
-#    mcmc_proposed_accepted = log(runif(1)) < log_acceptance_ratio
-#    if(mcmc_proposed_accepted){
-#      model_params_current = model_params_proposed
-#      log_likelihood_current = log_likelihood_proposed
-#      log_prior_current = log_prior_proposed
-#      log_posterior_current = log_posterior_proposed
-#      
-#      #' Save model output
-#      res_postvacc_all = model_output$save_data
-#      #res_postvacc_all = res_postvacc_all %>% as.data.table %>% .[, -"output"] %>% reshapeModelOutput(model_params$params_vac)
-#      #res_postvacc_all = res_postvacc_all %>%
-#      #  merge(age_groups[, c("id", "name", "age_group_data_trial", "age_group_data_2006")], by.x="age", by.y="id") %>%
-#      #  merge(popsize_model, by="name") %>%
-#      #  .[, value := value * N] %>% .[!is.na(age_group_data_trial), .(value = sum(value)), by=c("cluster", "compartment", "age_group_data_trial", "time")] %>%
-#      #  .[, N := sum(value), by=c("cluster", "age_group_data_trial", "time")] %>% .[, prev := value / N] %>% .[, -c("N", "value")] %>%
-#      #  dcast(...~compartment, value.var="prev") %>% .[, VT := VT + B] %>% .[, -"B"] %>% melt(measure.vars = c("S", "VT", "NVT"), variable.name = "compartment", value.name = "modelled")
-#      
-#      qs::qsave(res_postvacc_all, sprintf("%s/out_%s.qs", model_output_folder, i))
-#    }
-#    
-#    mcmc_params[i, ] = c(model_params_current, log_prior_current, log_likelihood_current, log_posterior_current)
-#    
-#    #' Update acceptance rate
-#    if(i == 1)
-#      mcmc_acceptance_rate = mcmc_proposed_accepted
-#    else
-#      mcmc_acceptance_rate = mcmc_acceptance_rate + (mcmc_proposed_accepted - mcmc_acceptance_rate)/i
-#    
-#    #' Update empirical covariance matrix
-#    if(mcmc_adapt_shape_i <= mcmc_adapt_shape_stop){
-#      tmp = updateCovMat(model_params_covmat_empirical, model_params_mean, model_params_current, i)
-#      model_params_covmat_empirical = tmp$model_params_covmat_empirical
-#      model_params_mean = tmp$model_params_mean
-#    }
-#    
-#    if( (i %% 1000) == 0 )
-#      write.table(mcmc_params, output_file)
-#    
-#    if( (i %% 10) == 0 ){
-#      #message(sprintf("%s/%s (%s%%) - %s - LLp1: %s; LL: %s; a: %s (%s%%); s: %s",
-#      #                i, mcmc_steps, round(100*i/mcmc_steps, 1), Sys.time(),
-#      #                round(log_likelihood_proposed, 1), round(log_likelihood_current, 1),
-#      #                round(mcmc_acceptance_rate*i, 1), round(100*mcmc_acceptance_rate,1),
-#      #                round(mcmc_scaling_factor, 5)))
-#      
-#      if((z %% 15) == 0){
-#        message(paste0(sprintf("%15.15s", c("Time", "Iteration", "LLProp/Curr", "LPrProp/Curr", "LPoProp/Curr", "Accepted", "Adapt",
-#                                            colnames(mcmc_params)[-ncol(mcmc_params)])), collapse = " "))
-#      }
-#      message(paste0(c(format(Sys.time(), format="%H:%M:%S"), sprintf("%s (%s%%)", i, round(100*i/mcmc_steps,1)),
-#                       sprintf("%s/%s", round(log_likelihood_proposed, 1), round(log_likelihood_current, 1)),
-#                       sprintf("%s/%s", round(log_prior_proposed, 1), round(log_prior_current, 1)),
-#                       sprintf("%s/%s", round(log_posterior_proposed, 1), round(log_posterior_current, 1)),
-#                       sprintf("%s (%s%%)", round(mcmc_acceptance_rate*i, 1), round(100*mcmc_acceptance_rate,1)),
-#                       round(mcmc_scaling_factor, 5), sprintf("%1.4e", (mcmc_params[i, -ncol(mcmc_params)]))) %>%
-#                       sprintf("%15.15s", .), collapse = " "))
-#      z = z + 1
-#    }
-#  }
-#  
-#  return(list(mcmc_params = mcmc_params, acceptance_rate = mcmc_acceptance_rate, covmat = model_params_covmat_proposed,
-#              times = c(adapt_size_start_at = mcmc_adapt_shape_start, adapt_shape_start_at = mcmc_adapt_shape_start_at,
-#                        adapt_shape_stop_at = mcmc_adapt_shape_stop_at)))
-#}
 
 #' Process the contact matrix to have the same age groups as the model, and return as a matrix with
 #' contactor age-groups in columns and contactee age-groups in rows
@@ -791,4 +408,53 @@ runModel = function(initial_state, model_params, steady_state = FALSE, times = c
   }
   
   return(result)
+}
+
+#' coverage_to can be provided as the name of another vaccination_group to improve readability, but needs to be provided as an index to
+#' the model. This function matches names provided in coverage_to, to the correct index 
+renameCoverageTo = function(model_populations){
+  lapply(model_populations, function(population){
+    arm_names = names(population$arms)
+    population$arms = lapply(arm_names, function(name, arms){
+      arm = arms[[name]]
+      arm$coverage_r = arm$coverage_r %>% lapply(function(x, arms, name){
+        if(!is.null(x$coverage_to)){
+          if(is.numeric(x$coverage_to)){
+            message("coverage_to is numeric, assuming correct indices are already provided")
+          } else {
+            x$coverage_to = x$coverage_to %>% sapply(function(z, arms){
+              #cpp index starts at 0
+              which(arms == z) - 1}, arms)
+          }
+        } else {
+          #move to the next vaccination_group, if not provided
+          x$coverage_to = rep(which(arms == name), age_groups_model[, .N])
+        }
+        
+        return(x)
+      }, names(arms), name)
+      
+      arm$coverage_c = arm$coverage_c %>% lapply(function(x, arms, name){
+        if(!is.null(x$coverage_to)){
+          if(is.numeric(x$coverage_to)){
+            message("coverage_to is numeric, assuming correct indices are already provided")
+          } else {
+            x$coverage_to = x$coverage_to %>% sapply(function(z, arms){
+              #cpp index starts at 0
+              which(arms == z) - 1}, arms)
+          }
+        } else {
+          x$coverage_to = rep(which(arms == name), age_groups_model[, .N])
+        }
+        
+        return(x)
+      }, names(arms), name)
+      
+      return(arm)
+    }, population$arms)
+    
+    names(population$arms) = arm_names
+    
+    return(population)
+  }) 
 }
