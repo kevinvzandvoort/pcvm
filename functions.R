@@ -458,3 +458,93 @@ renameCoverageTo = function(model_populations){
     return(population)
   }) 
 }
+
+#' alternative summary for BayesianTools
+altSummary = function(out){
+  
+  ##update Parameters
+  #for(j in 1:length(out$chain)){
+  #  x = out$chain[[j]]  
+  #  x = apply(x[, 1:priors[, .N]], 1, function(z){
+  #    names(z) = priors$variable
+  #    return(as.vector(updateDepParameters(z)))
+  #  }) %>% t()
+  #  out$chain[[j]][, 1:priors[, .N]] = x
+  #}
+  
+  #try(DInf <- DIC(sampler), silent = TRUE)
+  sampler <- out
+  MAPvals <- round(MAP(sampler)$parametersMAP, 3)
+  psf <- FALSE
+  mcmcsampler <- sampler$settings$sampler
+  runtime <- sampler$settings$runtime[3]
+  correlations <- round(cor(getSample(sampler)), 3)
+  chain <- getSample(sampler, parametersOnly = T, coda = T)
+  if ("mcmc.list" %in% class(chain)) {
+    psf <- TRUE
+    nrChain <- length(chain)
+    nrIter <- nrow(chain[[1]])
+    conv <- tryCatchWE(round(coda::gelman.diag(chain)$mpsrf, 3))# ifelse(chain$setup$numPars > 1, round(coda::gelman.diag(chain)$mpsrf, 3), round(coda::gelman.diag(chain)$mpsrf, 3)$psrf[1])
+    if(conv$status == 0) conv = conv$value else conv = 9999
+    npar <- sampler$setup$numPars
+    lowerq <- upperq <- numeric(npar)
+    medi <- numeric(npar)
+    parnames <- colnames(chain[[1]])
+    for (i in 1:npar) {
+      if (nchar(parnames[i]) > 8) 
+        parnames[i] <- paste(substring(parnames[i], 1, 
+                                       6), "...", sep = "")
+    }
+    for (i in 1:npar) {
+      tmp <- unlist(chain[, i])
+      tmp <- quantile(tmp, probs = c(0.025, 0.5, 0.975))
+      lowerq[i] <- round(tmp[1], 3)
+      medi[i] <- round(tmp[2], 3)
+      upperq[i] <- round(tmp[3], 3)
+    }
+  } else {
+    nrChain <- 1
+    nrIter <- nrow(chain)
+    npar <- sampler$setup$numPars
+    conv <- "Only one chain; convergence cannot be determined!"
+    medi <- numeric(npar)
+    lowerq <- upperq <- numeric(npar)
+    parnames <- colnames(chain)
+    for (i in 1:npar) {
+      tmp <- quantile(chain[, i], probs = c(0.025, 0.5, 
+                                            0.975))
+      lowerq[i] <- round(tmp[1], 3)
+      medi[i] <- round(tmp[2], 3)
+      upperq[i] <- round(tmp[3], 3)
+    }
+  }
+  parOutDF <- cbind(MAPvals, lowerq, medi, upperq)
+  colnames(parOutDF) <- c("MAP", "2.5%", "median", "97.5%")
+  if (psf == TRUE) {
+    psf <- round(gelmanDiagnostics(sampler)$psrf[, 1], 3)
+    parOutDF <- cbind(psf, parOutDF)
+  }
+  
+  parnames = priors$variable
+  row.names(parOutDF) <- parnames
+  cat(rep("#", 25), "\n")
+  cat("## MCMC chain summary ##", "\n")
+  cat(rep("#", 25), "\n", "\n")
+  #cat("# MCMC sampler: ", mcmcsampler, "\n")
+  #cat("# Nr. Chains: ", nrChain, "\n")
+  cat("# Iterations per chain: ", nrIter, "\n")
+  cat("# Acceptance rate: ", 1 - ifelse(out$setup$numPars == 
+                                          1 & class(chain) == "mcmc.list", round(mean(sapply(chain, 
+                                                                                             coda::rejectionRate)), 3), round(mean(coda::rejectionRate(chain)), 
+                                                                                                                              3)), "\n")
+  cat("# Effective sample size: ", ifelse(sampler$setup$numPars == 
+                                            1, round(coda::effectiveSize(chain), 0), round(mean(coda::effectiveSize(chain)), 
+                                                                                           0)), "\n")
+  cat("# Runtime: ", runtime, " sec.", "\n", "\n")
+  cat("# Parameters (adjusted)\n")
+  print(parOutDF)
+  cat("\n")
+  #try(cat("## DIC: ", round(DInf$DIC, 3), "\n"), silent = TRUE)
+  cat("## Convergence", "\n", "Gelman Rubin multivariate psrf: ", 
+      conv, "\n", "\n")
+}
