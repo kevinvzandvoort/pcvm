@@ -5,6 +5,7 @@
 
 // Standard library includes
 #include <vector>
+#include <memory>
 #ifdef MP_ENABLED
     #include <omp.h>
 #endif
