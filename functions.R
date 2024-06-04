@@ -548,3 +548,170 @@ altSummary = function(out){
   cat("## Convergence", "\n", "Gelman Rubin multivariate psrf: ", 
       conv, "\n", "\n")
 }
+
+#' Increases or decreases the brightness of a color by a percentage of the current brightness.
+#' adjust_by: A number between -1 and 1. E.g. 0.3 = 30% lighter; -0.4 = 40% darker.
+#' See https://stackoverflow.com/a/54393956
+adjustColBrightness = function(hex_code, adjust_by=c(-1, 0, 1)){
+  if(any(adjust_by < -1) | any(adjust_by > 1)) stop("adjust_by needs to be between -1 and 1")
+  
+  if (nchar(hex_code) == 4) {
+    hex_code = gsub("#", "", hex_code) %>%
+      strsplit("") %>% .[[1]] %>% rep(each=2) %>% paste0("#", .)
+  }
+  
+  rgb = col2rgb(hex_code)
+  
+  col_matrix = matrix(rep(rgb, length(adjust_by)), 3)
+  adjustable_limit = col_matrix
+  adjustable_limit[, which(adjust_by > 0)] = (255 - as.matrix(adjustable_limit[, which(adjust_by > 0)]))
+  adjustable_limit = ceiling(adjustable_limit * matrix(rep(adjust_by, each=3), 3))
+  col_matrix = col_matrix + adjustable_limit
+  
+  apply(col_matrix, MARGIN = 2, FUN = function(x) rgb(x[1]/255, x[2]/255, x[3]/255, 1))
+}
+
+# combine multiple BayesianTools output files from the same folder
+combineOutFiles = function(OUTPUT_FOLDER){
+  out_files = list.files(OUTPUT_FOLDER) %>%
+    subset(grepl(pattern = "out(\\w)+.RDS", x = .))
+  chains = sapply(strsplit(out_files, "_"), "[[", 2) %>% unique %>% as.numeric()
+  
+  # read max iteration for each chain
+  out = lapply(chains, function(chain){
+    #get max iteration for each chain
+    max_iter = out_files %>%
+      subset(grepl(pattern = sprintf("out_%s", chain), x=.)) %>%
+      sapply(function(x){
+        gsub("^[^0-9]*[0-9]+[^0-9]*", "", x) %>%
+          gsub("^([0-9]+).*", "\\1", .) %>%
+          as.numeric
+      }) %>%
+      max()
+    
+    out = readRDS(sprintf("%s/out_%s_%s.RDS", OUTPUT_FOLDER, chain, max_iter))  
+    return(out)})
+  
+  #process mcmclist to use in analyses
+  if(length(out) == 1) {
+    out = out[[1]]
+  } else {
+    #make sure all chains are of the same length
+    min_it = min(sapply(out, function(x) min(dim(x$chain[[1]])[1])))
+    for(i in 1:length(out)){
+      out[[i]]$chain = out[[i]]$chain %>% lapply(function(x){
+        x = x[1:min_it, ]
+        class(x) = "mcmc"
+        return(x)})
+      
+      class(out[[i]]$chain) = "mcmc.list"
+    }
+    
+    class(out) = c("mcmcSamplerList", "bayesianOutput")
+  }
+}
+
+createTracePlot = function(posterior){
+  posterior %>%
+    .[, -c("LP", "LL", "LPr")] %>%
+    .[, i := 1:.N, by="chain"] %>%
+    melt(id.vars=c("chain", "i")) %>%
+    ggplot(aes(x=i, y=value, colour=as.factor(chain)))+
+    facet_grid(factor(variable, priors$variable)~., scales = "free")+
+    geom_line(alpha=0.75)+
+    theme_bw()+
+    labs(x="Iteration", y="Value", colour="Chain")+
+    guides(colour = guide_legend(override.aes = list(size = 5))) 
+}
+
+createPriorPosteriorPlot = function(priors, posterior){
+  posterior_long = posterior %>%
+    .[, -c("LP", "LL", "LPr")] %>%
+    .[, i := 1:.N, by="chain"] %>%
+    melt(id.vars=c("chain", "i")) %>%
+    .[, type := "posterior"]
+  
+  prior_evaluated = lapply(1:nrow(priors), function(i){
+    eval_at = seq(from=priors[i, plotmin] + 1e-6, to=priors[i, plotmax], length=1000)
+    data.table(variable = priors[i, variable],
+               value = eval_at,
+               density = sapply(eval_at, function(x) (priors[i, density][[1]])(x, uselog = FALSE)))}) %>%
+    rbindlist()
+  prior_evaluated[, scaled_density := density/max(density), by="variable"] %>% .[, type := "prior"]
+  prior_evaluated[variable %in% c("VE_waning_full", "VE_waning_minor"), value := value+2]
+  
+  scales = lapply(1:priors[, .N], function(i, priors) {
+    scale_x_continuous(limits = c(priors[i, plotmin], priors[i, plotmax]))
+  }, priors)
+  
+  posterior_long %>%
+    ggplot(aes(x=value, fill=type, colour=type))+
+    facet_wrap(facets = ~ factor(variable, priors$variable), scales = "free")+
+    geom_area(data = prior_evaluated, aes(y=density), alpha=0.75)+
+    geom_density(alpha=0.75)+
+    geom_vline(data = posterior_long %>%
+                 .[, .(med=median(value), l95=quantile(value, 0.025), u95=quantile(value, 0.975)), by=c("variable")],
+               aes(xintercept=med))+
+    geom_vline(data = posterior_long %>%
+                 .[, .(med=median(value), l95=quantile(value, 0.025), u95=quantile(value, 0.975)), by=c("variable")],
+               aes(xintercept=l95), linetype=2)+
+    geom_vline(data = posterior_long %>%
+                 .[, .(med=median(value), l95=quantile(value, 0.025), u95=quantile(value, 0.975)), by=c("variable")],
+               aes(xintercept=u95), linetype=2)+
+    theme_bw()+
+    labs(x="Value", y="Density")+
+    scale_fill_manual(values=c("prior" = "#DDDDDD", "posterior" = "#777777"))+
+    scale_colour_manual(values=c("prior" = "#DDDDDD", "posterior" = "#777777"))+
+    ggh4x::facetted_pos_scales(x = scales)
+}
+
+parallelModelRuns = function(singleRun, iterations = 10, cores = parallel::detectCores()){
+  #' setup parallel environment
+  if (cores > parallel::detectCores()) stop("More cores specified than available on this machine")
+  cl = parallel::makeCluster(cores)
+  
+  #' load environments
+  packages = (.packages())
+  tmpdlls = getLoadedDLLs()
+  dlls = vector(mode = "character", length = length(tmpdlls))
+  counter = 0
+  for (i in tmpdlls) {
+    counter = counter + 1
+    dlls[counter] = i[[2]]
+  }
+  objects = ls(envir = .GlobalEnv)
+  objects = c(objects)
+  packageFun = function(packages = NULL, dlls = NULL) {
+    if (!is.null(packages)) {
+      for (i in packages) library(i, character.only = TRUE)
+    }
+    if (!is.null(dlls)) {
+      for (i in dlls) try(dyn.load(i), silent = T)
+    }
+  }
+  
+  parallel::clusterCall(cl, packageFun, packages, dlls)
+  parallel::clusterExport(cl, varlist = objects)
+  
+  #' get modelled estimates for each iteration (may take a while)
+  posterior_prevalence = parallel::parLapplyLB(cl, seq_len(iterations), function(i){
+    if(i %% floor(iterations/10) == 0) message(sprintf("%s/%s (%s%%)", i, iterations, round(i/iterations * 100)))
+    set.seed(i)
+    
+    #' sample values from the posterior
+    sample_posterior = unlist(posterior[sample(1:.N, 1), ])
+    
+    #' Run model
+    model_run = singleRun(sample_posterior)
+    
+    model_run[, run := i]
+    return(model_run)}) %>% rbindlist
+  
+  #' stop parallel environment
+  parallel::stopCluster(cl = cl)
+  
+  # process output
+  colnames(posterior_prevalence)[2] = "age_group"
+  
+  return(posterior_prevalence)
+}
