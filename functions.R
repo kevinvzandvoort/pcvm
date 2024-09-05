@@ -609,6 +609,8 @@ combineOutFiles = function(OUTPUT_FOLDER){
     
     class(out) = c("mcmcSamplerList", "bayesianOutput")
   }
+  
+  return(out)
 }
 
 createTracePlot = function(posterior){
