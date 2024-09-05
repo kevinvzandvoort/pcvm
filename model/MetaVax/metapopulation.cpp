@@ -188,12 +188,20 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
     start += populations[p]->setState(y, start, time, solver_difference);
   }
   
-  //if(solver_difference){
-  //  int start = 0;
-  //  for(int p = 0; p < n_pops; p++){
-  //    start += populations[p]->setStateVaccineCampaign(y, start, time);
-  //  }
-  //}
+  if(solver_difference){
+    int start = 0;
+    
+    //this updates y
+    for(int p = 0; p < n_pops; p++){
+      start += populations[p]->setStateVaccineCampaign(y, start, time);
+    }
+    
+    //reset state
+    start = 0;
+    for(int p = 0; p < n_pops; p++){
+      start += populations[p]->setState(y, start, time, solver_difference);
+    }
+  }
   
   //Process demographic changes (ageing and migration) and vaccinations
   //can run in parallel if no migration in the model

@@ -43,7 +43,7 @@ public:
     vac_cov_c = arma::rowvec(n_agrp, arma::fill::zeros);
     
     if(!vac_cov_c_change_final && time >= vac_cov_c_change_time){
-      Rcpp::Rcout << "DEBUG - Doing a campaign; TIME: " << time << std::endl;
+      //Rcpp::Rcout << "DEBUG - Doing a campaign; TIME: " << time << std::endl;
       vac_cov_c_index++;
       vac_cov_c = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["value"]);
       vac_cov_c_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["coverage_to"]);
