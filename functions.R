@@ -195,7 +195,7 @@ adjustForTimeStep = function(value, MODEL_TIMESTEP.=MODEL_TIMESTEP){
     #    if(any(x > 1)) stop("Rate per timestep > 1, use smaller timestep.") 
     #  }
     #}
-          
+    
     return(x)
   }
   
@@ -265,8 +265,8 @@ getVaccineCoverage = function(age_groups_model, age_breaks, coverage, return_tab
 #' - assuming contacts are made completely at random
 #' - and assuming everyone makes exactly one contact with every other individual
 createExpectedMatrix = function(popsize){
-    expected = matrix(rep(popsize/sum(popsize), each=length(popsize)), length(popsize))
-    return(expected)
+  expected = matrix(rep(popsize/sum(popsize), each=length(popsize)), length(popsize))
+  return(expected)
 }
 
 #' Create prior for BayesianTools
