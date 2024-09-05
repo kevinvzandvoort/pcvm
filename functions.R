@@ -352,7 +352,8 @@ runModel = function(initial_state, model_params, steady_state = FALSE, times = c
   nout_incidence = model_params$trial_arms %>% sapply(function(x) length(x[["arms"]])) %>% sum() * age_groups_model[, .N] * length(compartments_incidence)
   
   if(steady_state){
-    #if(incidence) warning("currently not running incidence in steady state")
+    #always use ODE model to calculate steady state
+    model_params$solver_difference = FALSE
     result = runsteady(
       y=initial_state, func = "derivs",
       initpar = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
@@ -365,8 +366,6 @@ runModel = function(initial_state, model_params, steady_state = FALSE, times = c
                               sapply(cluster$arms,
                                      function(arm) sapply(arm$coverage_c, "[[", "time")) %>%
                                 unlist %>% unique %>% sort}) %>% unlist() %>% sort() %>% unique()
-    #TMP
-    #campaign_times = NULL
     if(length(campaign_times) == 0){
       if(difference_equations){
         result = ode(
