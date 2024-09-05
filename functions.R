@@ -348,7 +348,7 @@ uniqueSharedObject = function(){
 }
 
 #' Function that will be used in MCMC algorithm
-runModel = function(initial_state, model_params, steady_state = FALSE, times = c(0, 1), hmin = 0, hmax = NULL, rtol = 1e-06, atol = 1e-06, incidence = FALSE, parallel = FALSE){
+runModel = function(initial_state, model_params, steady_state = FALSE, times = c(0, 1), hmin = 0, hmax = NULL, rtol = 1e-06, atol = 1e-06, incidence = FALSE, parallel = FALSE, difference_equations = FALSE){
   nout_incidence = model_params$trial_arms %>% sapply(function(x) length(x[["arms"]])) %>% sum() * age_groups_model[, .N] * length(compartments_incidence)
   
   if(steady_state){
@@ -365,23 +365,42 @@ runModel = function(initial_state, model_params, steady_state = FALSE, times = c
                               sapply(cluster$arms,
                                      function(arm) sapply(arm$coverage_c, "[[", "time")) %>%
                                 unlist %>% unique %>% sort}) %>% unlist() %>% sort() %>% unique()
+    #TMP
+    #campaign_times = NULL
     if(length(campaign_times) == 0){
-      result = lsode(
-        y=initial_state, times=times, func = "derivs",
-        parms = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
-        nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
-        initfunc = "initmod", jactype = "fullint",
-        hmin = hmin, hmax = hmax, atol = atol, rtol = rtol) %>% tryCatchWE
+      if(difference_equations){
+        result = ode(
+          y=initial_state, times=times, func = "derivs",
+          parms = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
+          nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
+          initfunc = "initmod", method = "iteration") %>% tryCatchWE  
+      } else {
+        result = lsode(
+          y=initial_state, times=times, func = "derivs",
+          parms = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
+          nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
+          initfunc = "initmod", jactype = "fullint",
+          hmin = hmin, hmax = hmax, atol = atol, rtol = rtol) %>% tryCatchWE
+      }
     } else {
       events = list(func="vaccineCampaignEvent",
                     time=campaign_times)
       times = sort(unique(c(times, campaign_times)))
-      result = lsode(
-        y=initial_state, times=times, func = "derivs",
-        parms = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
-        nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
-        initfunc = "initmod", jactype = "fullint",
-        events = events, hmin = hmin, hmax = hmax, atol = atol, rtol = rtol) %>% tryCatchWE  
+      if(difference_equations){
+        result = ode(
+          y=initial_state, times=times, func = "derivs",
+          parms = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
+          nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
+          initfunc = "initmod",
+          events = events, method = "iteration") %>% tryCatchWE  
+      } else {
+        result = lsode(
+          y=initial_state, times=times, func = "derivs",
+          parms = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
+          nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
+          initfunc = "initmod", jactype = "fullint",
+          events = events, hmin = hmin, hmax = hmax, atol = atol, rtol = rtol) %>% tryCatchWE   
+      }
     }
   }
   
@@ -619,7 +638,7 @@ createTracePlot = function(posterior){
     .[, i := 1:.N, by="chain"] %>%
     melt(id.vars=c("chain", "i")) %>%
     ggplot(aes(x=i, y=value, colour=as.factor(chain)))+
-    facet_grid(factor(variable, priors$variable)~., scales = "free")+
+    facet_wrap(factor(variable, priors$variable)~., scales = "free")+
     geom_line(alpha=0.75)+
     theme_bw()+
     labs(x="Iteration", y="Value", colour="Chain")+

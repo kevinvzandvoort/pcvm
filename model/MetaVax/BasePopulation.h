@@ -26,7 +26,7 @@ public:
   void setMigrationRates(int n_pops, int p, std::vector<std::unique_ptr<Population>> & populations);
   void updateDemographics(std::vector<std::unique_ptr<Population>> & populations, int n_pops, int p);
   void updateParams(double & time);
-  int setState(double *y, int start, double & time);
+  int setState(double *y, int start, double & time, bool & solver_difference);
   int setStateVaccineCampaign(double *y, int start, double & time);
   void addMigrants(int origin, int t, int c, arma::rowvec &delta);
   arma::rowvec& getDerivs();

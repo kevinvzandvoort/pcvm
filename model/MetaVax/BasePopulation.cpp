@@ -164,7 +164,7 @@ void BasePopulation::setMigrationRates(int n_pops, int p, std::vector<std::uniqu
     //update any time parameters on the cluster level
   }
 
-  int BasePopulation::setState(double *y, int start, double & time){
+  int BasePopulation::setState(double *y, int start, double & time, bool & solver_difference){
     //Rcpp::Rcout << "DEBUG: Population::setState" << std::endl;
     //std::this_thread::sleep_for(std::chrono::milliseconds(5));
     updateParams(time);
@@ -179,7 +179,7 @@ void BasePopulation::setMigrationRates(int n_pops, int p, std::vector<std::uniqu
       
       //Rcpp::Rcout << "DEBUG: Population::setState t: " << t << " - updateParams" << std::endl;
       //std::this_thread::sleep_for(std::chrono::milliseconds(5));
-      vac_strata[t]->updateParams(time);
+      vac_strata[t]->updateParams(time, solver_difference);
     }
     
     //Rcpp::Rcout << "DEBUG: Population::setState incidence" << std::endl;
