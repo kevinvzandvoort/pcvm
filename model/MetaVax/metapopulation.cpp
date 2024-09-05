@@ -28,6 +28,8 @@ extern "C" {
 //std::vector<Cluster*> global_clusters;
 std::vector<std::unique_ptr<Population>> populations;
 int n_pops, n_agrp;
+bool debug, solver_difference;
+double delta_t;
 
 void vaccineCampaignEvent(int *n, double *t, double *y) {
   double time = t[0];
@@ -35,7 +37,7 @@ void vaccineCampaignEvent(int *n, double *t, double *y) {
   //first set state of all compartments
   int start = 0;
   for(int p = 0; p < n_pops; p++){
-    start += populations[p]->setState(y, start, time);
+    start += populations[p]->setState(y, start, time, solver_difference);
   }
   
   //now process vaccination
@@ -44,8 +46,6 @@ void vaccineCampaignEvent(int *n, double *t, double *y) {
     start += populations[p]->setStateVaccineCampaign(y, start, time);
   }
 }
-
-bool debug = false;
 
 //This function sets the model up, and stores the parameter values in memory. It is only called once when setting up
 // the model
@@ -57,6 +57,10 @@ void initmod(void (* odeparms)(int *, double *)) {
   try {
     //Parse parameters passed to deSolve as Rcpp::List
     Rcpp::List parms = Rcpp::clone(Rcpp::as<Rcpp::List>(sparms));
+    
+    //Will we use difference or differential equations
+    solver_difference = parms["solver_difference"];
+    delta_t = parms["solver_difference_delta_t"];
     
     //Define the number of trial arms/clusters and agegroups from parameter list passed to deSolve
     n_pops = Rcpp::as<Rcpp::List>(parms["trial_arms"]).size();
@@ -95,6 +99,9 @@ void rt_initmod(void (* odeparms)(int *, double *)) {
   try {
     //Parse parameters passed to deSolve as Rcpp::List
     Rcpp::List parms = Rcpp::clone(Rcpp::as<Rcpp::List>(sparms));
+    
+    //Never use difference equations for runsteady
+    solver_difference = false;
     
     //Define the number of trial arms/clusters and agegroups from parameter list passed to deSolve
     n_pops = Rcpp::as<Rcpp::List>(parms["trial_arms"]).size();
@@ -178,8 +185,15 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
   //std::this_thread::sleep_for(std::chrono::milliseconds(5));
   int start = 0;
   for(int p = 0; p < n_pops; p++){
-    start += populations[p]->setState(y, start, time);
+    start += populations[p]->setState(y, start, time, solver_difference);
   }
+  
+  //if(solver_difference){
+  //  int start = 0;
+  //  for(int p = 0; p < n_pops; p++){
+  //    start += populations[p]->setStateVaccineCampaign(y, start, time);
+  //  }
+  //}
   
   //Process demographic changes (ageing and migration) and vaccinations
   //can run in parallel if no migration in the model
@@ -211,7 +225,11 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
   for(int p = 0; p < n_pops; p++){
     arma::rowvec deqs = populations[p]->getDerivs();
     for(int d = 0; d < (int) deqs.size(); d++){
-      ydot[i] = deqs(d);
+      if(solver_difference){
+        ydot[i] = y[i] + deqs(d) * delta_t; //deSolve requires the new state when solving difference equations
+      } else {
+        ydot[i] = deqs(d); //solver_difference;
+      }
       i += 1;
     }
   }

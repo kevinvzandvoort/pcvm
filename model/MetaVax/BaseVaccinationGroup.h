@@ -39,8 +39,11 @@ public:
   ~BaseVaccinationGroup(){  }
   
   arma::rowvec getCoverageVaccineCampaign(double & time){
+    //no campaign coverage unless we are doing a campaign
+    vac_cov_c = arma::rowvec(n_agrp, arma::fill::zeros);
+    
     if(!vac_cov_c_change_final && time >= vac_cov_c_change_time){
-      //Rcpp::Rcout << "DEBUG - Doing a campaign; TIME: " << time << std::endl;
+      Rcpp::Rcout << "DEBUG - Doing a campaign; TIME: " << time << std::endl;
       vac_cov_c_index++;
       vac_cov_c = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["value"]);
       vac_cov_c_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["coverage_to"]);
@@ -52,7 +55,7 @@ public:
     return vac_cov_c;
   }
   
-  void updateParams(double & time){
+  void updateParams(double & time, bool & solver_difference){
     //update any time parameters on the transcomp level
     if(!vac_cov_r_change_final && time >= vac_cov_r_change_time){
       vac_cov_r_index++;
@@ -61,6 +64,19 @@ public:
       vac_cov_r_change_final = vac_cov_r_index == (vac_cov_r_values.size()-1); //check if this is the final value to be updated
       if(!vac_cov_r_change_final) vac_cov_r_change_time = Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index+1])["time"]; //check at which time the value changes next
     }
+    
+    //can do the same for catch-up coverage if using difference equations, otherwise needs to be implemented using events
+    //if(solver_difference){
+    //  if(!vac_cov_c_change_final && time >= vac_cov_c_change_time){
+    //    Rcpp::Rcout << "DEBUG: at time " << time << " update vac_cov_c " << vac_cov_c_index << " to " << vac_cov_c_index+1 << "; change time " << vac_cov_c_change_time << std::endl;
+    //    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    //    vac_cov_c_index++;
+    //    vac_cov_c = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["value"]);
+    //    vac_cov_c_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["coverage_to"]);
+    //    vac_cov_c_change_final = vac_cov_c_index == (vac_cov_c_values.size()-1); //check if this is the final value to be updated
+    //    if(!vac_cov_c_change_final) vac_cov_c_change_time = Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index+1])["time"]; //check at which time the value changes next
+    //  } 
+    //}
   }
   
   arma::rowvec& getN(){
