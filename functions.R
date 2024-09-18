@@ -309,7 +309,7 @@ createLogNormPriorBT = function(name, min = 0, max = 1, plotmin = NULL, plotmax 
   if(is.null(plotmin)) plotmin = min
   if(is.null(plotmax)) plotmax = max
   data.table(variable = name, min = min, max = max, plotmin = plotmin, plotmax = plotmax,
-             density = function(x, uselog=TRUE) dlnorm(ifelse(flippedx, 1 - x, x), meanlog = meanlog, sdlog = sdlog),
+             density = function(x, uselog=TRUE) dlnorm(ifelse(flippedx, 1 - x, x), meanlog = meanlog, sdlog = sdlog, log = uselog),
              sampler = function(n){
                in_range = FALSE
                while(!in_range){
