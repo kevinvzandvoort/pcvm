@@ -34,6 +34,8 @@ double delta_t;
 void vaccineCampaignEvent(int *n, double *t, double *y) {
   double time = t[0];
   
+  Rcpp::Rcout << "DEBUG: vaccineCampaignEvent at time: " << time << std::endl;
+  
   //first set state of all compartments
   int start = 0;
   for(int p = 0; p < n_pops; p++){
@@ -50,7 +52,6 @@ void vaccineCampaignEvent(int *n, double *t, double *y) {
 //This function sets the model up, and stores the parameter values in memory. It is only called once when setting up
 // the model
 void initmod(void (* odeparms)(int *, double *)) {
-//std::cerr << "TEST IN initmod" << std::endl;
   //We get the parms argument passed to deSolve as SEXP object
   SEXP sparms = get_deSolve_gparms_Rcpp();
   
@@ -59,13 +60,17 @@ void initmod(void (* odeparms)(int *, double *)) {
     Rcpp::List parms = Rcpp::clone(Rcpp::as<Rcpp::List>(sparms));
     
     //Will we use difference or differential equations
-    solver_difference = parms["solver_difference"];
-    delta_t = parms["solver_difference_delta_t"];
+    solver_difference = Rcpp::as<Rcpp::List>(parms["global_settings"])["solver_difference"];
+    delta_t = 1.0;
+    if(solver_difference){
+      delta_t = Rcpp::as<Rcpp::List>(parms["global_settings"])["solver_difference_delta_t"];  
+    }
+    
     
     //Define the number of trial arms/clusters and agegroups from parameter list passed to deSolve
-    n_pops = Rcpp::as<Rcpp::List>(parms["trial_arms"]).size();
+    n_pops = Rcpp::as<Rcpp::List>(parms["populations"]).size();
     if(n_pops == 0) n_pops = 1;
-    n_agrp = parms["n_agrp"];
+    n_agrp = Rcpp::as<Rcpp::List>(parms["global_settings"])["n_agrp"];
     
     //We can't do garbage collection at end of model run in deSolve, so we do it if the same DLL/SO is still loaded
     // and deSolve is ran again
@@ -92,7 +97,6 @@ void initmod(void (* odeparms)(int *, double *)) {
 //This function sets the model up, and stores the parameter values in memory. It is only called once when setting up
 // the model
 void rt_initmod(void (* odeparms)(int *, double *)) {
-
   //We get the parms argument passed to deSolve as SEXP object
   SEXP sparms = get_rootSolve_gparms_Rcpp();
   
@@ -104,9 +108,10 @@ void rt_initmod(void (* odeparms)(int *, double *)) {
     solver_difference = false;
     
     //Define the number of trial arms/clusters and agegroups from parameter list passed to deSolve
-    n_pops = Rcpp::as<Rcpp::List>(parms["trial_arms"]).size();
+    n_pops = Rcpp::as<Rcpp::List>(parms["populations"]).size();
     if(n_pops == 0) n_pops = 1;
-    n_agrp = parms["n_agrp"];
+    
+    n_agrp = Rcpp::as<Rcpp::List>(parms["global_settings"])["n_agrp"];
     
     //We can't do garbage collection at end of model run in deSolve, so we do it if the same DLL/SO is still loaded
     // and deSolve is ran again
@@ -117,26 +122,11 @@ void rt_initmod(void (* odeparms)(int *, double *)) {
       populations.emplace_back(std::make_unique<Population>(n_agrp, parms, p));
     }
     
-    //for(int p = 0; p < n_pops; p++){
-    //  for(int t = 0; t < populations[p]->n_vstrat; t++){
-    //    for(int c = 0; c < n_comps_prevalence; c++){
-    //      Rcpp::Rcout << "DEBUG A pop: " << p << "; t: " << t << "; c: " << c << "; val: " << populations[p]->vac_strata[t]->compartments[c]->n_agrp;
-    //    }
-    //  }
-    //}
-
     //Now all cluster objects exist, process the migration rates so these are consistent with the population size
     for(int p = 0; p < n_pops; p++){
       populations[p]->setMigrationRates(n_pops, p, populations);
     }
-
-    //for(int p = 0; p < n_pops; p++){
-    //  for(int t = 0; t < populations[p]->n_vstrat; t++){
-    //    for(int c = 0; c < n_comps_prevalence; c++){
-    //      Rcpp::Rcout << "DEBUG B pop: " << p << "; t: " << t << "; c: " << c << "; val: " << populations[p]->vac_strata[t]->compartments[c]->n_agrp;
-    //    }
-    //  }
-    //}
+    
   } catch(std::exception& __ex__){
     forward_exception_to_r(__ex__);
   } catch(...){
@@ -153,11 +143,7 @@ void cleanUp() {
 
 //This function is called by deSolve in every iteration of the integrator
 void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip) {
-  /* Something strange going on here, I need to copy the global_clusters variable to a local variable for this to work
-   *  otherwise the model 1) runs very slow and 2) returns the wrong results.
-   * Another thing that makes this work is by printing something (i.e. Rcpp::Rcout or std::cout) at every step, such
-   *  as the time-step.
-   */
+  
   double time = t[0];
   
   //TODO: check if this is necessary

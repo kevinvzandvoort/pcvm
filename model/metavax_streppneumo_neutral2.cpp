@@ -153,11 +153,11 @@ public:
     // Constructor
     Population(int n_agrp, Rcpp::List parms, int c) 
         :   BasePopulation(n_agrp, parms, c),
-            comp(parms["comp"]),
-            crate_vt(Rcpp::as<arma::rowvec>(parms["clearVT"])),
-            crate_nvt(Rcpp::as<arma::rowvec>(parms["clearNVT"]))
+            comp(Rcpp::as<Rcpp::List>(parms["global_settings"])["comp"]),
+            crate_vt(Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(parms["global_settings"])["clearVT"])),
+            crate_nvt(Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(parms["global_settings"])["clearNVT"]))
     {
-            Rcpp::List trial_arm = Rcpp::as<Rcpp::List>(parms["trial_arms"])[c];
+            Rcpp::List trial_arm = Rcpp::as<Rcpp::List>(parms["populations"])[c];
             Rcpp::List cluster_parameters = Rcpp::as<Rcpp::List>(trial_arm["parameters"]);
             beta_vt = Rcpp::as<arma::mat>(cluster_parameters["betaVT"]);
             beta_nvt = Rcpp::as<arma::mat>(cluster_parameters["betaNVT"]);

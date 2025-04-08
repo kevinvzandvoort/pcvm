@@ -2,14 +2,15 @@
 
 BasePopulation::BasePopulation(int n_agrp, Rcpp::List parms, int p)
     : n_agrp(n_agrp),
-      arate(Rcpp::as<arma::rowvec>(parms["ageout"])), travel(Rcpp::as<arma::mat>(parms["travel"])), migration(Rcpp::as<arma::mat>(parms["migration"]))
+      arate(Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(parms["global_settings"])["ageout"])),
+      travel(Rcpp::as<arma::mat>(Rcpp::as<Rcpp::List>(parms["global_settings"])["travel"])),
+      migration(Rcpp::as<arma::mat>(Rcpp::as<Rcpp::List>(parms["global_settings"])["migration"]))
   {
-    //Rcpp::Rcout << "DEBUG: Create BasePopulation" << std::endl;
     //We take the total number of required vaccinated strata from the trial_arms element in the parms list passed to
     // deSolve.
-    Rcpp::List trial_arm = Rcpp::as<Rcpp::List>(parms["trial_arms"])[p];
+    Rcpp::List trial_arm = Rcpp::as<Rcpp::List>(parms["populations"])[p];
     Rcpp::List cluster_parameters = Rcpp::as<Rcpp::List>(trial_arm["parameters"]);
-    Rcpp::List vstrata = Rcpp::as<Rcpp::List>(trial_arm["arms"]);
+    Rcpp::List vstrata = Rcpp::as<Rcpp::List>(trial_arm["vaccination_groups"]);
     
     //set population size
     population_size = Rcpp::as<arma::rowvec>(cluster_parameters["N"]);
@@ -23,7 +24,7 @@ BasePopulation::BasePopulation(int n_agrp, Rcpp::List parms, int p)
     //Vaccinated strata are stored in a vector with TransComp objects
     vac_strata.reserve(vstrata.size());
     n_vstrat = vstrata.size();
-
+  
     //list with empty vaccine coverage
     Rcpp::List coverage_null_inner = Rcpp::List::create(
       Rcpp::Named("value", Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros))),
@@ -43,7 +44,7 @@ BasePopulation::BasePopulation(int n_agrp, Rcpp::List parms, int p)
       //unvaccinated stratum has no waning or VE
       if(t == 0){
         vac_parms["waning"] = Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros));
-        vac_parms["efficacy"] = Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros));
+        vac_parms["efficacy_transmission"] = Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros));
       }
       
       //final stratum has no coverage
@@ -51,13 +52,10 @@ BasePopulation::BasePopulation(int n_agrp, Rcpp::List parms, int p)
         vac_parms["coverage_c"] = Rcpp::clone(coverage_null);
         vac_parms["coverage_r"] = Rcpp::clone(coverage_null);
       }
-      //Rcpp::Rcout << "Create stratum: " << t << std::endl;
-      //Rcpp::Rcout << "BasePopulation:: X t: " << t << std::endl;
+      
       vac_strata.emplace_back(std::make_unique<VaccinationGroup>(n_agrp, vac_parms, arate, arate_corr)); //object is already destroyed here...
-      //Rcpp::Rcout << "BasePopulation:: A t: " << t << std::endl;
     }
-    //Rcpp::Rcout << "BasePopulation:: B" << std::endl;
-
+    
     //We preallocate memory for some variables for efficiency
     deqs_all = arma::rowvec(n_comps_prevalence * n_agrp * n_vstrat, arma::fill::zeros);
     incidence_all = arma::rowvec(n_comps_incidence * n_agrp * n_vstrat, arma::fill::zeros);
@@ -65,7 +63,6 @@ BasePopulation::BasePopulation(int n_agrp, Rcpp::List parms, int p)
     incidence = arma::rowvec(n_comps_incidence * n_agrp, arma::fill::zeros);
     wane_out_nomigr = vac_out = mgr_out = mgr_out_cl = mgr_out_wane = mgr_out_wane_cl = arma::rowvec(n_agrp, arma::fill::zeros);
     N_ageing = 0.0;
-    //Rcpp::Rcout << "BasePopulation:: C" << std::endl;
 }
 
 BasePopulation::~BasePopulation(){
@@ -91,21 +88,16 @@ void BasePopulation::setMigrationRates(int n_pops, int p, std::vector<std::uniqu
 
   //This function updates the demographics for each arm in the cluster (process ageing, migration, and vaccination)
   void BasePopulation::updateDemographics(std::vector<std::unique_ptr<Population>> & populations, int n_pops, int p){
-    //std::cout << "DEBUG: BasePopulation::updateDemographics, p: " << p << std::endl;
-    //std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
     N = arma::rowvec(n_agrp, arma::fill::zeros);
     for(int t=0; t < n_vstrat; t++){
       N += vac_strata[t]->getN();
     }
-    //std::cout << "DEBUG: N: " << N << std::endl;
-    //std::this_thread::sleep_for(std::chrono::milliseconds(50));
     
     //Loop through all vaccine strata to calculate the derivatives at this timestep
     for(int t=0; t < n_vstrat; t++){
       arma::rowvec vac_cov_r = vac_strata[t]->get_vac_cov_r();
       arma::rowvec wrate = vac_strata[t]->get_vac_waning();
-
+      
       for(int c=0; c < n_comps_prevalence; c++){
         //initially, no people move into this stratum
         vac_out = arma::rowvec(n_agrp, arma::fill::zeros);
@@ -120,9 +112,10 @@ void BasePopulation::setMigrationRates(int n_pops, int p, std::vector<std::uniqu
         } else {
           //No newborns enter the vaccinated strata.
           N_ageing = 0.0;
-
+          
           //Effectively vaccinated people move from previous strata to the current stratum (if they do not migrate).
           for(int v = 0; v < t; v++){
+            
             //check if people move into this arm
             arma::umat cov_this_arm = vac_strata[v]->get_vac_cov_r_to() == arma::rowvec(n_agrp, arma::fill::value(t));
             if(accu(cov_this_arm) > 0){

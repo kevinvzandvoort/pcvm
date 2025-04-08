@@ -50,11 +50,14 @@ reshapeModelOutput2 = function(result, model_params){
   if(!incidence) result = result[, -"output"]
   result = result %>% melt(id.vars="time", variable.name = "id")
   
+  compartments_prevalence = model_params$global_settings$compartments_prevalence
+  compartments_incidence = model_params$global_settings$compartments_incidence
+  
   #' create data table to match to molten data
-  columns_prevalence = model_params$trial_arms %>%
+  columns_prevalence = model_params$populations %>%
     (function(populations){
       lapply(names(populations), function(pop, populations){
-        v_strata = populations[[pop]][["arms"]]
+        v_strata = populations[[pop]][["vaccination_groups"]]
         data.table(
           population = pop %>% rep(length(v_strata) * length(compartments_prevalence) * age_groups_model[, .N]),
           vaccination_group = names(v_strata) %>% rep(each = length(compartments_prevalence) * age_groups_model[, .N]),
@@ -65,10 +68,10 @@ reshapeModelOutput2 = function(result, model_params){
   columns_match = columns_prevalence
   
   if(incidence){
-    columns_incidence = model_params$trial_arms %>%
+    columns_incidence = model_params$populations %>%
       (function(populations){
         lapply(names(populations), function(pop, populations){
-          v_strata = populations[[pop]][["arms"]]
+          v_strata = populations[[pop]][["vaccination_groups"]]
           data.table(
             population = pop %>% rep(length(v_strata) * length(compartments_incidence) * age_groups_model[, .N]),
             vaccination_group = names(v_strata) %>% rep(each = length(compartments_incidence) * age_groups_model[, .N]),
@@ -79,8 +82,8 @@ reshapeModelOutput2 = function(result, model_params){
     columns_match = rbind(columns_match, columns_incidence)
   }
   
-  columns_match[, population := factor(population, names(model_params$trial_arms))]
-  columns_match[, vaccination_group := factor(vaccination_group, model_params$trial_arms %>% sapply(function(p) names(p[["arms"]])) %>% unlist() %>% as.vector() %>% unique())]
+  columns_match[, population := factor(population, names(model_params$populations))]
+  columns_match[, vaccination_group := factor(vaccination_group, model_params$populations %>% sapply(function(p) names(p[["vaccination_groups"]])) %>% unlist() %>% as.vector() %>% unique())]
   if(incidence){
     columns_match[, outcome := factor(outcome, c("prevalence", "incidence"))]
     columns_match[, compartment := factor(compartment, c(compartments_prevalence, compartments_incidence))]
@@ -103,31 +106,31 @@ eqStatesVaccinate2 = function(model_output, model_params, pop_unvacc = NULL){
   if(length(model_output[, unique(time)]) != 1) stop("Table model_output needs to be for a single timestep")
   if(is.null(pop_unvacc)){
     if(length(model_output[, unique(population)]) == 1){
-      pop_unvacc = rep(model_output[, unique(population)], length(model_params$trial_arms))
-    } else if(all(names(model_params$trial_arms) %in% model_output[, unique(population)])){
-      pop_unvacc = names(model_params$trial_arms)
+      pop_unvacc = rep(model_output[, unique(population)], length(model_params$populations))
+    } else if(all(names(model_params$populations) %in% model_output[, unique(population)])){
+      pop_unvacc = names(model_params$populations)
     } else {
       stop("eqStatesVaccinate2: method not yet implemented")
     }
   }
-  names(pop_unvacc) = names(model_params$trial_arms)
+  names(pop_unvacc) = names(model_params$populations)
   
   model_output = model_output[outcome == "prevalence"]
   model_output %>% setorder(population, vaccination_group, compartment, age)
   
-  model_input = model_params$trial_arms %>%
+  model_input = model_params$populations %>%
     (function(populations){
       lapply(names(populations), function(pop, populations){
-        v_strata = names(populations[[pop]][["arms"]])
+        v_strata = names(populations[[pop]][["vaccination_groups"]])
         v_strata %>% lapply(function(vstrat, pop){
           copy(model_output[population == pop_unvacc[[pop]]]) %>%
             .[, c("population", "vaccination_group", "value") := .(pop, vstrat, ifelse(vstrat == "unvaccinated", value, 0)), by=c("compartment", "age")] %>% .[]
         }, pop) %>% rbindlist()}, populations) %>% rbindlist})
   
-  model_input[, population := factor(population, names(model_params$trial_arms))]
-  model_input[, vaccination_group := factor(vaccination_group, model_params$trial_arms %>% sapply(function(p) names(p[["arms"]])) %>% unlist() %>% as.vector() %>% unique())]
+  model_input[, population := factor(population, names(model_params$populations))]
+  model_input[, vaccination_group := factor(vaccination_group, model_params$populations %>% sapply(function(p) names(p[["vaccination_groups"]])) %>% unlist() %>% as.vector() %>% unique())]
   model_input[, outcome := factor(outcome, c("prevalence"))]
-  model_input[, compartment := factor(compartment, compartments_prevalence)]
+  model_input[, compartment := factor(compartment, model_params$global_settings$compartments_prevalence)]
   
   setorder(model_input, outcome, population, vaccination_group, compartment, age_group, age, time)
   
@@ -207,10 +210,10 @@ adjustForTimeStep = function(value, MODEL_TIMESTEP.=MODEL_TIMESTEP){
   model_params$params_unvac$clearNVT %<>% multTimestep()
   model_params$params_unvac$ageout %<>% multTimestep()
   model_params$params_unvac$migration[which(model_params$params_unvac$migration != -1)] %<>% multTimestep()
-  model_params$params_unvac$trial_arms %<>% lapply(function(x){
+  model_params$params_unvac$populations %<>% lapply(function(x){
     x$parameters$betaVT %<>% multTimestep(TRUE, x$parameters$N)
     x$parameters$betaNVT %<>% multTimestep(TRUE, x$parameters$N)
-    x$arms %<>% lapply(function(z){
+    x$vaccination_groups %<>% lapply(function(z){
       z$waning %<>% multTimestep()
       return(z)})
     return(x)})
@@ -219,10 +222,10 @@ adjustForTimeStep = function(value, MODEL_TIMESTEP.=MODEL_TIMESTEP){
   model_params$params_vac$clearNVT %<>% multTimestep()
   model_params$params_vac$ageout %<>% multTimestep()
   model_params$params_vac$migration[which(model_params$params_vac$migration != -1)] %<>% multTimestep()
-  model_params$params_vac$trial_arms %<>% lapply(function(x){
+  model_params$params_vac$populations %<>% lapply(function(x){
     x$parameters$betaVT %<>% multTimestep(TRUE, x$parameters$N)
     x$parameters$betaNVT %<>% multTimestep(TRUE, x$parameters$N)
-    x$arms %<>% lapply(function(z){
+    x$vaccination_groups %<>% lapply(function(z){
       z$waning %<>% multTimestep()
       return(z)})
     return(x)})
@@ -335,10 +338,10 @@ uniqueSharedObject = function(){
       #' recompile model
       #' - need to first copy cpp file so the .o file will be unique
       #' - need to update this, first compile .o file, then only need to be linked in unique .so
-      file.copy(sprintf("%s/model/%s.cpp", PCVM_FOLDER, MODEL_NAME), sprintf("%s/model/%s.cpp", PCVM_FOLDER, new_file_name))
-      compileModel(sprintf("%s/model/%s.cpp", PCVM_FOLDER, new_file_name), "./model/build/",
+      file.copy(sprintf("%s/model/%s.cpp", METAVAX_FOLDER, MODEL_NAME), sprintf("%s/model/%s.cpp", METAVAX_FOLDER, new_file_name))
+      compileModel(sprintf("%s/model/%s.cpp", METAVAX_FOLDER, new_file_name), "./model/build/",
                    sprintf("%s%s", new_file_name, .Platform$dynlib.ext))
-      file.remove(sprintf("%s/model/%s.cpp", PCVM_FOLDER, new_file_name))
+      file.remove(sprintf("%s/model/%s.cpp", METAVAX_FOLDER, new_file_name))
     }
   }
   if(!is.loaded("derivs", new_file_name)) dyn.load(new_file_path)
@@ -349,22 +352,26 @@ uniqueSharedObject = function(){
 
 #' Function that will be used in MCMC algorithm
 runModel = function(initial_state, model_params, steady_state = FALSE, times = c(0, 1), hmin = 0, hmax = NULL, rtol = 1e-06, atol = 1e-06, incidence = FALSE, parallel = FALSE, difference_equations = FALSE){
-  nout_incidence = model_params$trial_arms %>% sapply(function(x) length(x[["arms"]])) %>% sum() * age_groups_model[, .N] * length(compartments_incidence)
+  nout_incidence = model_params$populations %>%
+    sapply(function(x) length(x[["vaccination_groups"]])) %>%
+    sum() * model_params$global_settings$age_groups_model[, .N] * length(model_params$global_settings$compartments_incidence)
   
   if(steady_state){
     #always use ODE model to calculate steady state
-    model_params$solver_difference = FALSE
+    model_params$global_settings$solver_difference = FALSE
     result = runsteady(
-      y=initial_state, func = "derivs",
+      y = initial_state, func = "derivs",
       initpar = model_params, dllname = {if(parallel) uniqueSharedObject() else MODEL_NAME},
       nout = ifelse(incidence, nout_incidence, 1), outnames = {if(incidence) paste0("inc_", seq_len(nout_incidence)) else "output"},
       initfunc = "rt_initmod", jactype = "fullint",
       hmin = hmin, hmax = hmax, atol = atol, rtol = rtol) %>% tryCatchWE()
   } else {
-    campaign_times = sapply(model_params$trial_arms,
-                            function(cluster){
-                              sapply(cluster$arms,
-                                     function(arm) sapply(arm$coverage_c, "[[", "time")) %>%
+    model_params$global_settings$solver_difference = model_params$global_settings$model_solver_type == "DIFF"
+    
+    campaign_times = sapply(model_params$populations,
+                            function(p){
+                              sapply(p$vaccination_groups,
+                                     function(vaccination_group) sapply(vaccination_group$coverage_c, "[[", "time")) %>%
                                 unlist %>% unique %>% sort}) %>% unlist() %>% sort() %>% unique()
     if(length(campaign_times) == 0){
       if(difference_equations){
@@ -432,8 +439,8 @@ runModel = function(initial_state, model_params, steady_state = FALSE, times = c
 #' the model. This function matches names provided in coverage_to, to the correct index 
 renameCoverageTo = function(model_populations){
   lapply(model_populations, function(population){
-    arm_names = names(population$arms)
-    population$arms = lapply(arm_names, function(name, arms){
+    arm_names = names(population$vaccination_groups)
+    population$vaccination_groups = lapply(arm_names, function(name, arms){
       arm = arms[[name]]
       arm$coverage_r = arm$coverage_r %>% lapply(function(x, arms, name){
         if(!is.null(x$coverage_to)){
@@ -469,12 +476,61 @@ renameCoverageTo = function(model_populations){
       }, names(arms), name)
       
       return(arm)
-    }, population$arms)
+    }, population$vaccination_groups)
     
-    names(population$arms) = arm_names
+    names(population$vaccination_groups) = arm_names
     
     return(population)
   }) 
+}
+
+renameCoverageTo2 = function(model_params){
+  model_params$populations = lapply(model_params$populations, function(population){
+    arm_names = names(population$vaccination_groups)
+    population$vaccination_groups = lapply(arm_names, function(name, arms){
+      arm = arms[[name]]
+      arm$coverage_r = arm$coverage_r %>% lapply(function(x, arms, name){
+        if(!is.null(x$coverage_to)){
+          if(is.numeric(x$coverage_to)){
+            message("coverage_to is numeric, assuming correct indices are already provided")
+          } else {
+            x$coverage_to = x$coverage_to %>% sapply(function(z, arms){
+              #cpp index starts at 0
+              which(arms == z) - 1}, arms)
+          }
+        } else {
+          #move to the next vaccination_group, if not provided
+          x$coverage_to = rep(which(arms == name), age_groups_model[, .N])
+        }
+        
+        return(x)
+      }, names(arms), name)
+      
+      arm$coverage_c = arm$coverage_c %>% lapply(function(x, arms, name){
+        if(!is.null(x$coverage_to)){
+          if(is.numeric(x$coverage_to)){
+            message("coverage_to is numeric, assuming correct indices are already provided")
+          } else {
+            x$coverage_to = x$coverage_to %>% sapply(function(z, arms){
+              #cpp index starts at 0
+              which(arms == z) - 1}, arms)
+          }
+        } else {
+          x$coverage_to = rep(which(arms == name), age_groups_model[, .N])
+        }
+        
+        return(x)
+      }, names(arms), name)
+      
+      return(arm)
+    }, population$vaccination_groups)
+    
+    names(population$vaccination_groups) = arm_names
+    
+    return(population)
+  })
+  
+  return(model_params)
 }
 
 #' alternative summary for BayesianTools
@@ -734,4 +790,290 @@ parallelModelRuns = function(singleRun, iterations = 10, cores = parallel::detec
   colnames(posterior_prevalence)[2] = "age_group"
   
   return(posterior_prevalence)
+}
+
+#' functions to create model_params
+createParameters = function(model_params,
+                            age_groups_model = setAgeBreaks(0),
+                            populations = c("pop1"),
+                            vaccination_groups = c("unvaccinated"),
+                            model_start_date = Sys.Date()){
+  #' set start date
+  model_params[["global_settings"]][["model_start_date"]] = model_start_date
+  
+  #' set age group related values
+  model_params[["global_settings"]][["age_groups_model"]] = age_groups_model
+  model_params[["global_settings"]][["n_agrp"]] = age_groups_model[, .N]
+  model_params[["global_settings"]][["ageout"]] = age_groups_model %>%
+    .[, .(duration = (to - from) %>% set_units("days"))] %>%
+    .[, 1/as.numeric(duration)]
+  
+  #' set populations and vaccination strata
+  model_params[["populations"]] = lapply(populations, function(population){
+    list(parameters = list(),
+         vaccination_groups = lapply(vaccination_groups, function(vaccination_group) list()) %>% setNames(vaccination_groups))
+  }) %>% setNames(populations)
+  
+  return(model_params)
+}
+
+setParameter = function(model_params,
+                        key,
+                        value,
+                        level = c("global", "population", "vaccination_group")[1],
+                        population = "all",
+                        vaccination_group = "all",
+                        strict = TRUE){
+  #' helper function to check population level
+  validatePopulation = function(model_params, population){
+    validate_result = population %in% names(model_params$populations)
+    
+    if(!validate_result)
+      if(strict) stop(sprintf("Population %s does not exist"))
+      else warning(sprintf("Population %s does not exist"))
+    
+    return(validate_result)
+  }
+  
+  #' helper function to check vaccination stratum level
+  validateVaccinationGroup = function(model_params, population, vaccination_group){
+    validate_result = vaccination_group %in% names(model_params$populations[[population]]$vaccination_groups)
+    
+    if(!validate_result)
+      if(strict) stop(sprintf("Vaccination group %s does not exist in population %s", vaccination_group, population))
+      else warning(sprintf("Vaccination group %s does not exist in population %s", vaccination_group, population))
+    
+    return(validate_result)
+  }
+  
+  #' check that correct level is specified
+  if(!level %in% c("global", "population", "vaccination_group"))
+    stop("Wrong level")
+  
+  #' overwrite with population names if needed
+  if(length(population) == 1) if(population == "all") population = names(model_params$populations)
+  
+  #' set key with value
+  if(level == "global"){
+    model_params$global_settings[[key]] = value
+  } else if(level == "population"){
+    for(p in population){
+      if(!validatePopulation(model_params, p)) next
+      model_params$populations[[p]]$parameters[[key]] = value
+    }
+  } else if(level == "vaccination_group"){
+    for(p in population){
+      if(!validatePopulation(model_params, p)) next
+      
+      #' overwrite with vaccination stratum names if needed
+      if(length(vaccination_group) == 1) if(vaccination_group == "all") vaccination_group = names(model_params$populations[[p]]$vaccination_groups)
+      
+      for(v in vaccination_group){
+        if(!validateVaccinationGroup(model_params, p, v)) next
+        
+        model_params$populations[[p]]$vaccination_groups[[v]][[key]] = value
+      }
+    }
+  }
+  
+  return(model_params)
+}
+
+createBTAdditionalPosterior = function(additional_posteriors){
+  additional_posteriors = list(
+    sampler = function(n = 1){
+      result = additional_posteriors$setup[, `sampler`] %>%
+        sapply(function(s, n){ s(n) }, n = n)
+      
+      if(n == 1){
+        names(result) = (additional_posteriors$setup[, `variable`])
+      } else {
+        colnames(result) = additional_posteriors$setup[, `variable`]
+      }
+      
+      return(result)
+    },
+    setup = additional_posteriors)
+  
+  return(additional_posteriors)
+}
+
+getParameter = function(model_params,
+                        key,
+                        level = c("global", "population", "vaccination_group")[1],
+                        population = "all",
+                        vaccination_group = "all"){
+  #' helper function to check population level
+  validatePopulation = function(model_params, population){
+    if(!population %in% names(model_params$populations))
+      stop(sprintf("Population %s does not exist"))
+  }
+  
+  #' helper function to check vaccination stratum level
+  validateVaccinationGroup = function(model_params, population, vaccination_group){
+    if(!vaccination_group %in% names(model_params$populations[[population]]$vaccination_groups))
+      stop(sprintf("Vaccination stratum %s does not exist in population %s", vaccination_group, population))
+  }
+  
+  #' check that correct level is specified
+  if(!level %in% c("global", "population", "vaccination_group"))
+    stop("Wrong level")
+  
+  #' overwrite with population names if needed
+  if(length(population) == 1) if(population == "all") population = names(model_params$populations)
+  
+  #' set key with value
+  if(level == "global"){
+    result = data.table(var1 = model_params$global_settings[[key]]) %>% setNames(key)
+  } else if(level == "population"){
+    result = lapply(population, function(p){
+      validatePopulation(model_params, p)
+      
+      data.table(population = p,
+                 var1 = model_params$populations[[p]]$parameters[[key]]) %>%
+        .[, age := .I] %>% setNames(c("population", key, "age"))
+    }) %>% rbindlist()
+  } else if(level == "vaccination_group"){
+    result = lapply(population, function(p){
+      validatePopulation(model_params, p)
+      
+      #' overwrite with vaccination stratum names if needed
+      if(length(vaccination_group) == 1) if(vaccination_group == "all") vaccination_group = names(model_params$populations[[p]]$vaccination_groups)
+      
+      lapply(vaccination_group, function(v){
+        validateVaccinationGroup(model_params, p, v)
+        
+        data.table(population = p,
+                   vaccination_group = v,
+                   var1 = model_params$populations[[p]]$vaccination_groups[[v]][[key]]) %>%
+          .[, age := .I] %>% setNames(c("population", "vaccination_group", key, "age"))
+      }) %>% rbindlist()
+    }) %>% rbindlist()
+  }
+  
+  return(result)
+}
+
+checkModelOutput = function(modelled_result, .eps = .Machine$double.eps){
+  #' use eps when comparing to ignore very small floating point errors
+  if(modelled_result[outcome == "prevalence", any(value < (0 - .eps)) | any(value > (1 + .eps))]){
+    warning(sprintf("Some modelled values <0 (min: %s) or >1 (max: %s).",
+                    modelled_result[, min(value)], modelled_result[, max(value)]))
+    return(FALSE)
+  }
+  
+  return(TRUE)
+}
+
+aggregateModelOutput = function(modelled_result, model_params, aggregate_agegroups,
+                                by_vaccination_group = TRUE, by_population = TRUE, by_compartment = TRUE, by_time = TRUE, additional_by = NULL){
+  #' specify columns to group results by
+  #' - note outcome and age_group are always included
+  by_cols = c("population", "vaccination_group", "outcome", "age_group", "compartment", "time", additional_by) %>% unique()
+  by_cols_N = c("population", "age_group")
+  if(!by_population){
+    by_cols = by_cols %>% subset(. != "population")
+    by_cols_N = by_cols_N %>% subset(. != "population")
+  }
+  if(!by_vaccination_group) by_cols = by_cols %>% subset(. != "vaccination_group")
+  if(!by_compartment) by_cols = by_cols %>% subset(. != "compartment")
+  if(!by_time) by_cols = by_cols %>% subset(. != "time")
+  
+  #' see what age groups match
+  matching_age_groups = model_params$global_settings$age_groups_model %>%
+    matchingAgeBreaks(aggregate_agegroups)
+  
+  #' sum N by age group
+  N = getParameter(model_params, level = "population", population = unique(modelled_result$population), key = "N")
+  N_aggregated = N %>%
+    merge(model_params$global_settings$age_groups_model[, c("age", "name")], by = "age") %>%
+    merge(matching_age_groups, by.x = "name", by.y = "name.x") %>%
+    .[, age_group := name.y] %>%
+    .[, .(N = sum(N)), by = by_cols_N]
+  
+  #' sum values by age group  
+  result_aggregated = modelled_result %>%
+    merge(N) %>% .[, value := value * N] %>% .[, -"N"] %>%
+    merge(matching_age_groups, by.x = "age_group", by.y = "name.x") %>%
+    .[, age_group := name.y] %>%
+    .[, .(value = sum(value)), by = by_cols]
+  
+  #' revert back to proportion for prevalence, keep incidence as absolute number
+  result_aggregated = result_aggregated %>% merge(N_aggregated) %>%
+    #' when aggregating time, want the average prevalence over all timesteps
+    .[, N := ifelse(by_time, N, N * modelled_result[, length(unique(time))]), by = by_cols] %>%
+    .[, value := ifelse(outcome == "prevalence", value/N, value)] %>%
+    .[, -"N"]
+  
+  return(result_aggregated)
+}
+
+testLL = function(ll, prior){
+  i = 0
+  x = prior$sampler()
+  y = ll(x)
+  
+  while(is.infinite(y)){
+    i = i + 1
+    message(sprintf("i: %s", i))
+    x = prior$sampler()
+    y = ll(x)
+  }
+  
+  message(sprintf("Found value after %s iterations; ll was %s", i, y))
+}
+
+setOutputFolder = function(working_directory, subdirectory){
+  OUTPUT_FOLDER = sprintf("%s/output", working_directory)
+  if(!dir.exists(OUTPUT_FOLDER)) dir.create(OUTPUT_FOLDER)
+  
+  OUTPUT_FOLDER = sprintf("%s/%s", OUTPUT_FOLDER, subdirectory)
+  if(!dir.exists(OUTPUT_FOLDER)) dir.create(OUTPUT_FOLDER)
+  
+  return(OUTPUT_FOLDER)
+}
+
+fitBT = function(bayesianSetup, settings, output_folder, chain, i){
+  if(i == 1){
+    burned_in = FALSE
+  } else {
+    burned_in = TRUE
+    out = readRDS(sprintf("%s/out_%s_%s.RDS", output_folder, chain, i))
+    
+    message(sprintf("chain %s - continue with i %s", chain, i))
+    altSummary(out)
+    message("-----")
+    
+    i = i+1
+  }
+  
+  while(!file.exists("./stop_sampler")){
+    tstart = proc.time()
+    
+    if(!burned_in){
+      out = runMCMC(bayesianSetup = bayesianSetup, settings = settings)
+    } else {
+      out = runMCMC(bayesianSetup = out)
+    }
+    
+    tend = proc.time()
+    elapsed = tend-tstart
+    
+    if(!burned_in){
+      burned_in = TRUE
+      
+      out$settings$burnin = 0
+      message(sprintf("%s - Finished with %s, continue and start saving output... Resetting i to t=1", Sys.time(), i))
+    }
+    
+    altSummary(out)
+    message(sprintf("%s - Finished with %s, continue... Last run took %s minutes", Sys.time(), i, round(elapsed[3]/60, 2)))
+    
+    saveRDS(out, sprintf("%s/out_%s_%s.RDS", output_folder, chain, i))
+    if(file.exists(sprintf("%s/out_%s_%s.RDS", output_folder, chain, i - 1))){
+      file.remove(sprintf("%s/out_%s_%s.RDS", OUTPUT_FOLDER, chain, i - 1))
+    }
+    
+    i = i + 1
+  }
 }

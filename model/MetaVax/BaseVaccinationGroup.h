@@ -19,17 +19,18 @@ public:
   BaseVaccinationGroup(int &n_agrp, Rcpp::List &vac_parms)
     : vac_waning(Rcpp::as<arma::rowvec>(vac_parms["waning"])), vac_cov_r_index(0), vac_cov_c_index(0),
       vac_cov_r_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_r"])), vac_cov_c_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_c"])),
-      vac_cov_c_implemented(false), n_agrp(n_agrp), vac_eff(Rcpp::as<arma::rowvec>(vac_parms["efficacy"]))
+      vac_cov_c_implemented(false), n_agrp(n_agrp), vac_eff(Rcpp::as<arma::rowvec>(vac_parms["efficacy_transmission"]))
   {
+    
     vac_cov_r = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["value"]);
     vac_cov_r_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["coverage_to"]);
-    vac_cov_r_change_final = vac_cov_r_index == (vac_cov_r_values.size()-1); //check if this is the final value to be updated
+    vac_cov_r_change_final = vac_cov_r_index == (vac_cov_r_values.size() - 1); //check if this is the final value to be updated
     vac_cov_r_change_time = (vac_cov_r_change_final ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index+1])["time"]);
     
     vac_cov_c = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["value"]);
     vac_cov_c_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["coverage_to"]);
-    vac_cov_c_change_final = vac_cov_c_index == (vac_cov_c_values.size()-1); //check if this is the final value to be updated
-    vac_cov_c_change_time = (vac_cov_c_change_final ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index+1])["time"]);
+    vac_cov_c_change_final = vac_cov_c_index == (vac_cov_c_values.size() - 1); //check if this is the final value to be updated
+    vac_cov_c_change_time = (vac_cov_c_values.size() == 0 ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["time"]);
 
     N = arma::rowvec(n_agrp, arma::fill::zeros);
     //Compartments are stored in a vector with Compartment objects, to be created when class is extended
@@ -42,13 +43,14 @@ public:
     //no campaign coverage unless we are doing a campaign
     vac_cov_c = arma::rowvec(n_agrp, arma::fill::zeros);
     
-    if(!vac_cov_c_change_final && time >= vac_cov_c_change_time){
-      //Rcpp::Rcout << "DEBUG - Doing a campaign; TIME: " << time << std::endl;
-      vac_cov_c_index++;
+    if(time >= vac_cov_c_change_time){
+      Rcpp::Rcout << "DEBUG - Doing a campaign; TIME: " << time << std::endl;
       vac_cov_c = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["value"]);
       vac_cov_c_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["coverage_to"]);
       vac_cov_c_change_final = vac_cov_c_index == (vac_cov_c_values.size()-1); //check if this is the final value to be updated
-      if(!vac_cov_c_change_final) vac_cov_c_change_time = Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index+1])["time"]; //check at which time the value changes next
+      
+      vac_cov_c_index++;
+      if(!vac_cov_c_change_final) vac_cov_c_change_time = Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["time"]; //check at which time the value changes next
       //Rcpp::Rcout << "DEBUG - vac_cov_c: " << vac_cov_c << std::endl;
     }
 
@@ -57,7 +59,7 @@ public:
   
   void updateParams(double & time, bool & solver_difference){
     //update any time parameters on the transcomp level
-    if(!vac_cov_r_change_final && time >= vac_cov_r_change_time){
+    if(time >= vac_cov_r_change_time){
       vac_cov_r_index++;
       vac_cov_r = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["value"]);
       vac_cov_r_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["coverage_to"]);

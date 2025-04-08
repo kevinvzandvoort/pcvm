@@ -48,7 +48,7 @@ public:
   incidence;
   // Constructor
   VaccinationGroup(int n_agrp, Rcpp::List vac_parms, arma::rowvec arate, arma::rowvec arate_corr) 
-    :   BaseVaccinationGroup(n_agrp, vac_parms), vac_eff_ot(Rcpp::as<arma::rowvec>(vac_parms["efficacy_ot"])),
+    :   BaseVaccinationGroup(n_agrp, vac_parms), vac_eff_ot(Rcpp::as<arma::rowvec>(vac_parms["efficacy_transmission_ot"])),
         //Note that last value in Compartment constructor is proportion of newborns
         // born into this compartment
         Sus(n_agrp, arate, arate_corr, 1.0),
@@ -208,13 +208,13 @@ public:
   // Constructor
   Population(int n_agrp, Rcpp::List parms, int c) 
     :   BasePopulation(n_agrp, parms, c),
-        comp(parms["comp"]),
-        crate_vt(Rcpp::as<arma::rowvec>(parms["clearVT"])),
-        crate_ot(Rcpp::as<arma::rowvec>(parms["clearOT"])),
-        crate_nvt(Rcpp::as<arma::rowvec>(parms["clearNVT"]))
+        comp(Rcpp::as<Rcpp::List>(parms["global_settings"])["comp"]),
+        crate_vt(Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(parms["global_settings"])["clearVT"])),
+        crate_ot(Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(parms["global_settings"])["clearOT"])),
+        crate_nvt(Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(parms["global_settings"])["clearNVT"]))
   {
     //Rcpp::Rcout << "DEBUG: Create Population" << std::endl;
-    Rcpp::List trial_arm = Rcpp::as<Rcpp::List>(parms["trial_arms"])[c];
+    Rcpp::List trial_arm = Rcpp::as<Rcpp::List>(parms["populations"])[c];
     Rcpp::List cluster_parameters = Rcpp::as<Rcpp::List>(trial_arm["parameters"]);
     beta_vt = Rcpp::as<arma::mat>(cluster_parameters["betaVT"]);
     beta_ot = Rcpp::as<arma::mat>(cluster_parameters["betaOT"]);
