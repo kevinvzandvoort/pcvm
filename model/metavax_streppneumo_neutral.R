@@ -1,10 +1,10 @@
-MODEL_NAME = "metavax_streppneumo_diamond" #which pcvm version should be used?
+MODEL_NAME = "metavax_streppneumo_neutral" #which pcvm version should be used?
 source(sprintf("%s/index.R", METAVAX_FOLDER))
 
 model_params = list(
   global_settings = list(
     model_name = MODEL_NAME,
-    compartments_prevalence = c("S", "VT", "NVT", "B"),
+    compartments_prevalence = c("S", "VT", "NVT", "VT2", "B", "NVT2"),
     compartments_incidence = c("iVT", "iNVT"),
     model_solver_type = "ODE",
     model_solver_difference = FALSE))

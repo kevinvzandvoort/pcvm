@@ -16,6 +16,9 @@
 //The RcppArmadillo attribute sets some macros that enable some external libraries and speed up Armadillo
 // [[Rcpp::depends(RcppArmadillo)]]
 
+#include <thread>
+#include <chrono>
+
 // Internal project includes
 // - Note, there are are additional includes at the end of the file
 #include "./MetaVax/Compartment.h"

@@ -351,7 +351,10 @@ uniqueSharedObject = function(){
 }
 
 #' Function that will be used in MCMC algorithm
-runModel = function(initial_state, model_params, steady_state = FALSE, times = c(0, 1), hmin = 0, hmax = NULL, rtol = 1e-06, atol = 1e-06, incidence = FALSE, parallel = FALSE, difference_equations = FALSE){
+runModel = function(initial_state, model_params, steady_state = FALSE, times = c(0, 1), hmin = 0, hmax = NULL, rtol = 1e-06, atol = 1e-06, incidence = FALSE, parallel = FALSE){
+  difference_equations = model_params$global_settings$model_solver_difference
+  if(difference_equations & !"solver_difference_delta_t" %in% names(model_params$global_settings)) stop("solver_difference_delta_t not defined")
+  
   nout_incidence = model_params$populations %>%
     sapply(function(x) length(x[["vaccination_groups"]])) %>%
     sum() * model_params$global_settings$age_groups_model[, .N] * length(model_params$global_settings$compartments_incidence)
@@ -445,7 +448,7 @@ renameCoverageTo = function(model_populations){
       arm$coverage_r = arm$coverage_r %>% lapply(function(x, arms, name){
         if(!is.null(x$coverage_to)){
           if(is.numeric(x$coverage_to)){
-            message("coverage_to is numeric, assuming correct indices are already provided")
+            #message("coverage_to is numeric, assuming correct indices are already provided")
           } else {
             x$coverage_to = x$coverage_to %>% sapply(function(z, arms){
               #cpp index starts at 0
@@ -462,7 +465,7 @@ renameCoverageTo = function(model_populations){
       arm$coverage_c = arm$coverage_c %>% lapply(function(x, arms, name){
         if(!is.null(x$coverage_to)){
           if(is.numeric(x$coverage_to)){
-            message("coverage_to is numeric, assuming correct indices are already provided")
+            #message("coverage_to is numeric, assuming correct indices are already provided")
           } else {
             x$coverage_to = x$coverage_to %>% sapply(function(z, arms){
               #cpp index starts at 0
@@ -492,7 +495,7 @@ renameCoverageTo2 = function(model_params){
       arm$coverage_r = arm$coverage_r %>% lapply(function(x, arms, name){
         if(!is.null(x$coverage_to)){
           if(is.numeric(x$coverage_to)){
-            message("coverage_to is numeric, assuming correct indices are already provided")
+            #message("coverage_to is numeric, assuming correct indices are already provided")
           } else {
             x$coverage_to = x$coverage_to %>% sapply(function(z, arms){
               #cpp index starts at 0
@@ -509,7 +512,7 @@ renameCoverageTo2 = function(model_params){
       arm$coverage_c = arm$coverage_c %>% lapply(function(x, arms, name){
         if(!is.null(x$coverage_to)){
           if(is.numeric(x$coverage_to)){
-            message("coverage_to is numeric, assuming correct indices are already provided")
+            #message("coverage_to is numeric, assuming correct indices are already provided")
           } else {
             x$coverage_to = x$coverage_to %>% sapply(function(z, arms){
               #cpp index starts at 0
@@ -688,8 +691,15 @@ combineOutFiles = function(OUTPUT_FOLDER){
 }
 
 createTracePlot = function(posterior){
+  #' Let's also assess the cross correlation table for fitted parameters
+  posterior = as.matrix(posterior)
+  posterior[, 1:priors[, .N]] = apply(posterior[, 1:priors[, .N]], 1, function(z){
+    names(z) = priors$variable
+    return(as.vector(updateDepParameters(z)))
+  }) %>% t()
+  posterior = as.data.table(posterior)
+  
   posterior %>%
-    .[, -c("LP", "LL", "LPr")] %>%
     .[, i := 1:.N, by="chain"] %>%
     melt(id.vars=c("chain", "i")) %>%
     ggplot(aes(x=i, y=value, colour=as.factor(chain)))+
@@ -701,20 +711,41 @@ createTracePlot = function(posterior){
 }
 
 createPriorPosteriorPlot = function(priors, posterior){
+  #' Let's also assess the cross correlation table for fitted parameters
+  posterior = as.matrix(posterior)
+  posterior[, 1:priors[, .N]] = apply(posterior[, 1:priors[, .N]], 1, function(z){
+    names(z) = priors$variable
+    return(as.vector(updateDepParameters(z)))
+  }) %>% t()
+  posterior = as.data.table(posterior)
+  
   posterior_long = posterior %>%
-    .[, -c("LP", "LL", "LPr")] %>%
     .[, i := 1:.N, by="chain"] %>%
     melt(id.vars=c("chain", "i")) %>%
     .[, type := "posterior"]
   
+  priors = priors %>% cbind(lapply(priors[, sampler], function(s){
+    samples = s(1000)
+    plotmin = quantile(samples, 0.25)
+    plotmax = quantile(samples, 0.75)
+    data.table(plotmin = plotmin,
+               plotmax = plotmax)
+  }) %>% rbindlist())
+  
+  priors = priors %>% merge(posterior_long[, .(postmin = quantile(value, 0.001), postmax = quantile(value, 0.999)), by = "variable"],
+                   by = "variable")
+  priors[, c("plotmin", "plotmax") := .(min(plotmin, postmin), max(plotmax, postmax)), by = "variable"]
+  
   prior_evaluated = lapply(1:nrow(priors), function(i){
-    eval_at = seq(from=priors[i, plotmin] + 1e-6, to=priors[i, plotmax], length=1000)
+    eval_at = seq(from=priors[i, plotmin], to=priors[i, plotmax], length=1000)
     data.table(variable = priors[i, variable],
                value = eval_at,
                density = sapply(eval_at, function(x) (priors[i, density][[1]])(x, uselog = FALSE)))}) %>%
     rbindlist()
   prior_evaluated[, scaled_density := density/max(density), by="variable"] %>% .[, type := "prior"]
-  prior_evaluated[variable %in% c("VE_waning_full", "VE_waning_minor"), value := value+2]
+  prior_evaluated = prior_evaluated %>%
+    merge(posterior_long[, .(maxdensity = max(hist(value, breaks = 20, plot = FALSE)$density)), by=variable]) %>%
+    .[, scaled_density := scaled_density * maxdensity]
   
   scales = lapply(1:priors[, .N], function(i, priors) {
     scale_x_continuous(limits = c(priors[i, plotmin], priors[i, plotmax]))
@@ -723,8 +754,8 @@ createPriorPosteriorPlot = function(priors, posterior){
   posterior_long %>%
     ggplot(aes(x=value, fill=type, colour=type))+
     facet_wrap(facets = ~ factor(variable, priors$variable), scales = "free")+
-    geom_area(data = prior_evaluated, aes(y=density), alpha=0.75)+
-    geom_density(alpha=0.75)+
+    geom_area(data = prior_evaluated, aes(y=scaled_density), alpha=0.75)+
+    geom_histogram(alpha=0.50, bins = 20, aes(y = ..density..))+
     geom_vline(data = posterior_long %>%
                  .[, .(med=median(value), l95=quantile(value, 0.025), u95=quantile(value, 0.975)), by=c("variable")],
                aes(xintercept=med))+
@@ -735,13 +766,16 @@ createPriorPosteriorPlot = function(priors, posterior){
                  .[, .(med=median(value), l95=quantile(value, 0.025), u95=quantile(value, 0.975)), by=c("variable")],
                aes(xintercept=u95), linetype=2)+
     theme_bw()+
-    labs(x="Value", y="Density")+
+    labs(x="Value", y="Density (scaled)")+
     scale_fill_manual(values=c("prior" = "#DDDDDD", "posterior" = "#777777"))+
     scale_colour_manual(values=c("prior" = "#DDDDDD", "posterior" = "#777777"))+
-    ggh4x::facetted_pos_scales(x = scales)
+    ggh4x::facetted_pos_scales(x = scales)+
+    theme(axis.text.x = element_text(angle=45, hjust=1),
+          axis.text.y = element_text(colour = "#00000000"),
+          axis.ticks.y = element_blank())
 }
 
-parallelModelRuns = function(singleRun, iterations = 10, cores = parallel::detectCores()){
+parallelModelRuns = function(singleRun, parameter_values, cores = parallel::detectCores()){
   #' setup parallel environment
   if (cores > parallel::detectCores()) stop("More cores specified than available on this machine")
   cl = parallel::makeCluster(cores)
@@ -770,12 +804,11 @@ parallelModelRuns = function(singleRun, iterations = 10, cores = parallel::detec
   parallel::clusterExport(cl, varlist = objects)
   
   #' get modelled estimates for each iteration (may take a while)
-  posterior_prevalence = parallel::parLapplyLB(cl, seq_len(iterations), function(i){
-    if(i %% floor(iterations/10) == 0) message(sprintf("%s/%s (%s%%)", i, iterations, round(i/iterations * 100)))
+  posterior_prevalence = parallel::parLapplyLB(cl, seq_len(nrow(parameter_values)), function(i){
     set.seed(i)
     
     #' sample values from the posterior
-    sample_posterior = unlist(posterior[sample(1:.N, 1), ])
+    sample_posterior = unlist(parameter_values[i, ])
     
     #' Run model
     model_run = singleRun(sample_posterior)
@@ -785,9 +818,6 @@ parallelModelRuns = function(singleRun, iterations = 10, cores = parallel::detec
   
   #' stop parallel environment
   parallel::stopCluster(cl = cl)
-  
-  # process output
-  colnames(posterior_prevalence)[2] = "age_group"
   
   return(posterior_prevalence)
 }
@@ -829,8 +859,8 @@ setParameter = function(model_params,
     validate_result = population %in% names(model_params$populations)
     
     if(!validate_result)
-      if(strict) stop(sprintf("Population %s does not exist"))
-      else warning(sprintf("Population %s does not exist"))
+      if(strict) stop(sprintf("Population %s does not exist", population))
+      else warning(sprintf("Population %s does not exist", population))
     
     return(validate_result)
   }
@@ -1076,4 +1106,34 @@ fitBT = function(bayesianSetup, settings, output_folder, chain, i){
     
     i = i + 1
   }
+}
+
+samplePosterior = function(out, start = 0, thin = 0, variable_names){
+  if("mcmcSamplerList" %in% class("out")){
+    posterior = lapply(seq_along(out),
+                       function(x, out) getSample(out[[x]], start = start, thin = 10, coda = FALSE) %>%
+                         as.data.table %>% .[, chain := x] %>% return, out) %>% rbindlist  
+  } else {
+    posterior = getSample(out, start = start, thin = 10, coda = FALSE) %>%
+      as.data.table %>% .[, chain := 1]
+  }
+  
+  
+  colnames(posterior) = c(variable_names, "chain")  
+  
+  return(posterior)
+}
+
+showPriorsTable = function(priors_table){
+  lapply(seq_len(priors_table[, .N]), function(i){
+    samples = priors_table[i, sampler][[1]](1e6)
+    data.table(variable = priors_table[i, variable],
+               sampler = priors_table[i, sampler] %>%
+                 as.character() %>%
+                 gsub("function (n) \nr", "", x = ., fixed = TRUE) %>%
+                 gsub("(n, ", "(", x = ., fixed = TRUE),
+               med = median(samples),
+               low95 = quantile(samples, 0.025),
+               high95 = quantile(samples, 0.975))
+  }) %>% rbindlist() 
 }

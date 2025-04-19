@@ -34,8 +34,6 @@ double delta_t;
 void vaccineCampaignEvent(int *n, double *t, double *y) {
   double time = t[0];
   
-  Rcpp::Rcout << "DEBUG: vaccineCampaignEvent at time: " << time << std::endl;
-  
   //first set state of all compartments
   int start = 0;
   for(int p = 0; p < n_pops; p++){
@@ -210,16 +208,16 @@ void derivs(int *neq, double *t, double *y, double *ydot, double *yout, int *ip)
   for(int p = 0; p < n_pops; p++){
     populations[p]->calculateDerivs(populations, n_pops, p, time);
   }
-    
+  
   //We return the model output to deSolve by copying the model output in the ydot array. The states are ordered
   // as: cluster > vaccine_arm > compartment (S, VT, NVT, B) > agegroup.
   int i = 0;
-  //Rcpp::Rcout << "DEBUG: Return to deSolve" << std::endl;
-  //std::this_thread::sleep_for(std::chrono::milliseconds(5));
   for(int p = 0; p < n_pops; p++){
     arma::rowvec deqs = populations[p]->getDerivs();
     for(int d = 0; d < (int) deqs.size(); d++){
       if(solver_difference){
+        //Rcpp::Rcout << "DEBUG: Return to deSolve (difference)" << std::endl;
+        //std::this_thread::sleep_for(std::chrono::milliseconds(5));
         ydot[i] = y[i] + deqs(d) * delta_t; //deSolve requires the new state when solving difference equations
       } else {
         ydot[i] = deqs(d); //solver_difference;

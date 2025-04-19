@@ -187,11 +187,13 @@ void BasePopulation::setMigrationRates(int n_pops, int p, std::vector<std::uniqu
 
   int BasePopulation::setStateVaccineCampaign(double *y, int start, double & time){
     arma::rowvec vac_in;
+    
     for(int t=0; t < n_vstrat; t++){
       arma::rowvec vac_cov_c = vac_strata[t]->getCoverageVaccineCampaign(time);
       
       for(int c=0; c < n_comps_prevalence; c++){
         vac_in = arma::rowvec(n_agrp, arma::fill::zeros);
+        
         if(t > 0){
           //Effectively vaccinated people move from previous strata to the current stratum
           for(int v = 0; v < t; v++){
