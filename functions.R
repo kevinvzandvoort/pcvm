@@ -295,7 +295,7 @@ createBetaPriorBT = function(name, min = 0, max = 1, plotmin = NULL, plotmax = N
   range = max - min
   if(is.null(plotmin)) plotmin = min
   if(is.null(plotmax)) plotmax = max
-  data.table(variable = name, min = min, max = max, plotmin = plotmin, plotmax = plotmax,
+  data.table(variable = name, min = min, max = max,
              density = function(x, uselog=TRUE) dbeta((x - min)/range, shape1 = shape1, shape2 = shape2, log=uselog),
              sampler = function(n) rbeta(n, shape1 = shape1, shape2 = shape2) * range + min)
 }
@@ -303,7 +303,7 @@ createBetaPriorBT = function(name, min = 0, max = 1, plotmin = NULL, plotmax = N
 createUnifPriorBT = function(name, min = 0, max = 1, plotmin = NULL, plotmax = NULL){
   if(is.null(plotmin)) plotmin = min
   if(is.null(plotmax)) plotmax = max
-  data.table(variable = name, min = min, max = max, plotmin = plotmin, plotmax = plotmax,
+  data.table(variable = name, min = min, max = max,
              density = function(x, uselog=TRUE) dunif(x, min = min, max = max, log=uselog),
              sampler = function(n) runif(n, min, max))
 }
@@ -311,16 +311,17 @@ createUnifPriorBT = function(name, min = 0, max = 1, plotmin = NULL, plotmax = N
 createLogNormPriorBT = function(name, min = 0, max = 1, plotmin = NULL, plotmax = NULL, meanlog, sdlog, flippedx = FALSE){
   if(is.null(plotmin)) plotmin = min
   if(is.null(plotmax)) plotmax = max
-  data.table(variable = name, min = min, max = max, plotmin = plotmin, plotmax = plotmax,
+  data.table(variable = name, min = min, max = max,
              density = function(x, uselog=TRUE) dlnorm(ifelse(flippedx, 1 - x, x), meanlog = meanlog, sdlog = sdlog, log = uselog),
              sampler = function(n){
-               in_range = FALSE
-               while(!in_range){
-                 val = rlnorm(n, meanlog = meanlog, sdlog = sdlog)
-                 if(flippedx) val = 1 - val
-                 in_range = (val >= min & val <= max)
-               }
-               return(val)
+               #in_range = FALSE
+               #while(!in_range){
+              #   val = rlnorm(n, meanlog = meanlog, sdlog = sdlog)
+              #   if(flippedx) val = 1 - val
+              #   in_range = (val >= min & val <= max)
+              # }
+              # return(val)
+               rlnorm(n, meanlog = meanlog, sdlog = sdlog)
              })
 }
 
@@ -1109,7 +1110,7 @@ fitBT = function(bayesianSetup, settings, output_folder, chain, i){
 }
 
 samplePosterior = function(out, start = 0, thin = 0, variable_names){
-  if("mcmcSamplerList" %in% class("out")){
+  if("mcmcSamplerList" %in% class(out)){
     posterior = lapply(seq_along(out),
                        function(x, out) getSample(out[[x]], start = start, thin = 10, coda = FALSE) %>%
                          as.data.table %>% .[, chain := x] %>% return, out) %>% rbindlist  

@@ -132,7 +132,7 @@ class Population : public BasePopulation {
     double comp;
     arma::mat beta_vt, beta_nvt;
     arma::rowvec crate_vt, crate_nvt, prev_vt, prev_nvt, foi_vt, foi_nvt;
-    arma::rowvec adj_acq_vt_on, adj_acq_nvt_on, adj_acq_vt_off, adj_acq_nvt_off;
+    arma::rowvec adj_acq_on, adj_acq_off;
     double adj_acq_start, adj_acq_stop;
 
     // Constructor
@@ -147,10 +147,8 @@ class Population : public BasePopulation {
             Rcpp::List cluster_parameters = Rcpp::as<Rcpp::List>(trial_arm["parameters"]);
             beta_vt = Rcpp::as<arma::mat>(cluster_parameters["betaVT"]);
             beta_nvt = Rcpp::as<arma::mat>(cluster_parameters["betaNVT"]);
-            adj_acq_vt_off = arma::rowvec(n_agrp, arma::fill::ones);
-            adj_acq_nvt_off = arma::rowvec(n_agrp, arma::fill::ones);
-            adj_acq_vt_on = Rcpp::as<arma::rowvec>(cluster_parameters["adjust_acq_vt"]);
-            adj_acq_nvt_on = Rcpp::as<arma::rowvec>(cluster_parameters["adjust_acq_nvt"]);
+            adj_acq_off = arma::rowvec(n_agrp, arma::fill::ones);
+            adj_acq_on = Rcpp::as<arma::rowvec>(cluster_parameters["adjust_acq"]);
             adj_acq_start = cluster_parameters["adjust_acq_start"];
             adj_acq_stop = cluster_parameters["adjust_acq_stop"];
     }
@@ -185,11 +183,11 @@ class Population : public BasePopulation {
     
         //Prevalence is then used to calculate force of infection
         if(time >= adj_acq_start && time < adj_acq_stop){
-            foi_vt = trans( beta_vt * trans(prev_vt_calc % adj_acq_vt_on) );
-            foi_nvt = trans( beta_nvt * trans(prev_nvt_calc % adj_acq_nvt_on) );  
+            foi_vt = trans( beta_vt * trans(prev_vt_calc % adj_acq_on) );
+            foi_nvt = trans( beta_nvt * trans(prev_nvt_calc % adj_acq_on) );  
         } else {
-            foi_vt = trans( beta_vt * trans(prev_vt_calc % adj_acq_vt_off) );
-            foi_nvt = trans( beta_nvt * trans(prev_nvt_calc % adj_acq_nvt_off) );  
+            foi_vt = trans( beta_vt * trans(prev_vt_calc % adj_acq_off) );
+            foi_nvt = trans( beta_nvt * trans(prev_nvt_calc % adj_acq_off) );  
         }
     
         #ifdef MP_ENABLED
