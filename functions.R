@@ -596,8 +596,32 @@ altSummary = function(out){
       upperq[i] <- round(tmp[3], 3)
     }
   }
-  parOutDF <- cbind(MAPvals, lowerq, medi, upperq)
-  colnames(parOutDF) <- c("MAP", "2.5%", "median", "97.5%")
+  
+  #' add for last iteration
+  chain_last = getSample(sampler, parametersOnly = T, coda = T, start = max(0, nrow(chain[[1]]) - sampler$settings$iterations/length(chain)))
+  medi_last <- numeric(npar)
+  lowerq_last <- upperq_last <- numeric(npar)
+  if ("mcmc.list" %in% class(chain)) {
+    for (i in 1:npar) {
+      tmp <- unlist(chain_last[, i])
+      tmp <- quantile(tmp, probs = c(0.025, 0.5, 0.975))
+      lowerq_last[i] <- round(tmp[1], 3)
+      medi_last[i] <- round(tmp[2], 3)
+      upperq_last[i] <- round(tmp[3], 3)
+    }
+  } else {
+    for (i in 1:npar) {
+      tmp <- quantile(chain_last[, i],
+                      probs = c(0.025, 0.5, 0.975))
+      lowerq_last[i] <- round(tmp[1], 3)
+      medi_last[i] <- round(tmp[2], 3)
+      upperq_last[i] <- round(tmp[3], 3)
+    }
+  }
+  
+  divider = seq_len(length(lowerq))
+  parOutDF <- cbind(MAPvals, lowerq, medi, upperq, divider, lowerq_last, medi_last, upperq_last)
+  colnames(parOutDF) <- c("MAP", "2.5%", "median", "97.5%", "", "2.5%", "median", "97.5%")
   if (psf == TRUE) {
     psf <- round(gelmanDiagnostics(sampler)$psrf[, 1], 3)
     parOutDF <- cbind(psf, parOutDF)
@@ -1070,6 +1094,8 @@ fitBT = function(bayesianSetup, settings, output_folder, chain, i){
   } else {
     burned_in = TRUE
     out = readRDS(sprintf("%s/out_%s_%s.RDS", output_folder, chain, i))
+    
+    #out$setup$likelihood$cl = bayesianSetup$likelihood$cl
     
     message(sprintf("chain %s - continue with i %s", chain, i))
     altSummary(out)
