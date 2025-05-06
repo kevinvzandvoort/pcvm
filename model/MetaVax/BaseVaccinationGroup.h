@@ -21,12 +21,17 @@ public:
       vac_cov_r_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_r"])), vac_cov_c_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_c"])),
       vac_cov_c_implemented(false), n_agrp(n_agrp), vac_eff(Rcpp::as<arma::rowvec>(vac_parms["efficacy_transmission"]))
   {
-    
-    vac_cov_r = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["value"]);
-    vac_cov_r_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["coverage_to"]);
+    vac_cov_r_change_time = (vac_cov_r_values.size() == 0 ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["time"]);
+    if(vac_cov_r_change_time > 0.0){
+      //if first vaccination time is in the future, initialize vaccination coverage at 0
+      vac_cov_r = arma::rowvec(n_agrp, arma::fill::zeros);
+      vac_cov_r_to = arma::rowvec(n_agrp, arma::fill::zeros);
+    } else {
+      vac_cov_r = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["value"]);
+      vac_cov_r_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["coverage_to"]);
+    }
     vac_cov_r_change_final = vac_cov_r_index == (vac_cov_r_values.size() - 1); //check if this is the final value to be updated
     //vac_cov_r_change_time = (vac_cov_r_change_final ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index+1])["time"]);
-    vac_cov_r_change_time = (vac_cov_r_values.size() == 0 ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["time"]);
     
     vac_cov_c = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["value"]);
     vac_cov_c_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["coverage_to"]);
