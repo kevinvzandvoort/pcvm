@@ -674,7 +674,7 @@ adjustColBrightness = function(hex_code, adjust_by=c(-1, 0, 1)){
 }
 
 # combine multiple BayesianTools output files from the same folder
-combineOutFiles = function(OUTPUT_FOLDER){
+combineOutFiles = function(OUTPUT_FOLDER, align_start = FALSE){
   out_files = list.files(OUTPUT_FOLDER) %>%
     subset(grepl(pattern = "out(\\w)+.RDS", x = .))
   chains = sapply(strsplit(out_files, "_"), "[[", 2) %>% unique %>% as.numeric()
@@ -702,7 +702,11 @@ combineOutFiles = function(OUTPUT_FOLDER){
     min_it = min(sapply(out, function(x) min(dim(x$chain[[1]])[1])))
     for(i in 1:length(out)){
       out[[i]]$chain = out[[i]]$chain %>% lapply(function(x){
-        x = x[1:min_it, ]
+        if(align_start){
+          x = x[1:min_it, ]  
+        } else {
+          x = x[seq(to = nrow(x), length.out = min_it), ]
+        }
         class(x) = "mcmc"
         return(x)})
       
