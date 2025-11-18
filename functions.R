@@ -739,7 +739,7 @@ createTracePlot = function(posterior){
     guides(colour = guide_legend(override.aes = list(size = 5))) 
 }
 
-createPriorPosteriorPlot = function(priors, posterior){
+createPriorPosteriorPlot = function(priors, posterior, subset = NULL){
   #' Let's also assess the cross correlation table for fitted parameters
   posterior = as.matrix(posterior)
   posterior[, 1:priors[, .N]] = apply(posterior[, 1:priors[, .N]], 1, function(z){
@@ -752,6 +752,12 @@ createPriorPosteriorPlot = function(priors, posterior){
     .[, i := 1:.N, by="chain"] %>%
     melt(id.vars=c("chain", "i")) %>%
     .[, type := "posterior"]
+  
+  
+  if(!is.null(subset)){
+    priors = priors[variable %in% subset]
+    posterior_long = posterior_long[variable %in% subset]
+  }
   
   priors = priors %>% cbind(lapply(priors[, sampler], function(s){
     samples = s(1000)
@@ -1025,7 +1031,7 @@ checkModelOutput = function(modelled_result, .eps = .Machine$double.eps){
 }
 
 aggregateModelOutput = function(modelled_result, model_params, aggregate_agegroups,
-                                by_vaccination_group = TRUE, by_population = TRUE, by_compartment = TRUE, by_time = TRUE, additional_by = NULL){
+                                by_vaccination_group = TRUE, by_population = TRUE, by_compartment = TRUE, by_time = TRUE, additional_by = NULL, incidence_relative = FALSE){
   #' specify columns to group results by
   #' - note outcome and age_group are always included
   by_cols = c("population", "vaccination_group", "outcome", "age_group", "compartment", "time", additional_by) %>% unique()
@@ -1052,7 +1058,8 @@ aggregateModelOutput = function(modelled_result, model_params, aggregate_agegrou
   
   #' sum values by age group  
   result_aggregated = modelled_result %>%
-    merge(N) %>% .[, value := value * N] %>% .[, -"N"] %>%
+    merge(N, by = c("population", "age")) %>%
+    .[, value := value * N] %>% .[, -"N"] %>%
     merge(matching_age_groups, by.x = "age_group", by.y = "name.x") %>%
     .[, age_group := name.y] %>%
     .[, .(value = sum(value)), by = by_cols]
@@ -1061,7 +1068,8 @@ aggregateModelOutput = function(modelled_result, model_params, aggregate_agegrou
   result_aggregated = result_aggregated %>% merge(N_aggregated) %>%
     #' when aggregating time, want the average prevalence over all timesteps
     .[, N := ifelse(by_time, N, N * modelled_result[, length(unique(time))]), by = by_cols] %>%
-    .[, value := ifelse(outcome == "prevalence", value/N, value)] %>%
+    .[, value := ifelse(outcome == "prevalence", value/N,
+                        ifelse(incidence_relative, value/N, value)), by = by_cols] %>%
     .[, -"N"]
   
   return(result_aggregated)
