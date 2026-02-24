@@ -46,6 +46,11 @@ BasePopulation::BasePopulation(int n_agrp, Rcpp::List parms, int p)
         vac_parms["waning"] = Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros));
         vac_parms["efficacy_transmission"] = Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros));
       }
+
+      //if waning_to is not specified, set to 0 (waning always to unvaccinated stratum)
+      if(!vac_parms.contains("waning_to")){
+        vac_parms["waning_to"] = Rcpp::wrap(0);
+      }
       
       //final stratum has no coverage
       if(t == (vstrata.size()-1)){
@@ -97,6 +102,7 @@ void BasePopulation::setMigrationRates(int n_pops, int p, std::vector<std::uniqu
     for(int t=0; t < n_vstrat; t++){
       arma::rowvec vac_cov_r = vac_strata[t]->get_vac_cov_r();
       arma::rowvec wrate = vac_strata[t]->get_vac_waning();
+      int waning_to = (t == 0 ? 0 : vac_strata[t]->get_vac_waning_to()); //those that wane from this stratum go to waning_to stratum (0 if no waning)
       
       for(int c=0; c < n_comps_prevalence; c++){
         //initially, no people move into this stratum
@@ -130,7 +136,7 @@ void BasePopulation::setMigrationRates(int n_pops, int p, std::vector<std::uniqu
 
         //get those who wane, but do not migrate
         wane_out_nomigr = vac_strata[t]->compartments[c]->get_wane_out_migr_none();
-        vac_strata[0]->compartments[c]->updateDerivs(wane_out_nomigr);
+        vac_strata[waning_to]->compartments[c]->updateDerivs(wane_out_nomigr); //those that wane go to waning_to stratum
 
         //Also add those migrating but not vaccinated (remain in this arm in other cluster)
         mgr_out += vac_strata[t]->compartments[c]->get_vac_none_wane_none_migr_out();
@@ -147,7 +153,7 @@ void BasePopulation::setMigrationRates(int n_pops, int p, std::vector<std::uniqu
           mgr_out_cl = mgr_out % (mrates[j] / mrates_total) / mrates[j];
           populations[j]->addMigrants(p, t, c, mgr_out_cl);
           mgr_out_wane_cl = mgr_out_wane % (mrates[j] / mrates_total);
-          populations[j]->addMigrants(p, 0, c, mgr_out_wane_cl); //those that wane always go to first stratum
+          populations[j]->addMigrants(p, waning_to, c, mgr_out_wane_cl); //those that wane go to waning_to stratum
         }
       }
     }

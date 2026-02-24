@@ -7,7 +7,7 @@
 class BaseVaccinationGroup{
 private:
   arma::rowvec vac_cov_r, vac_cov_c, vac_waning, vac_cov_r_to, vac_cov_c_to, N;
-  int vac_cov_r_index, vac_cov_c_index;
+  int vac_cov_r_index, vac_cov_c_index, vac_waning_to;
   Rcpp::List vac_cov_r_values, vac_cov_c_values;
   bool vac_cov_r_change_final, vac_cov_c_change_final, vac_cov_c_implemented;
   double vac_cov_r_change_time, vac_cov_c_change_time;
@@ -19,7 +19,8 @@ public:
   BaseVaccinationGroup(int &n_agrp, Rcpp::List &vac_parms)
     : vac_waning(Rcpp::as<arma::rowvec>(vac_parms["waning"])), vac_cov_r_index(0), vac_cov_c_index(0),
       vac_cov_r_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_r"])), vac_cov_c_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_c"])),
-      vac_cov_c_implemented(false), n_agrp(n_agrp), vac_eff(Rcpp::as<arma::rowvec>(vac_parms["efficacy_transmission"]))
+      vac_cov_c_implemented(false), n_agrp(n_agrp), vac_eff(Rcpp::as<arma::rowvec>(vac_parms["efficacy_transmission"])),
+      vac_waning_to(int(vac_parms["waning_to"]))
   {
     vac_cov_r_change_time = (vac_cov_r_values.size() == 0 ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["time"]);
     if(vac_cov_r_change_time > 0.0){
@@ -109,5 +110,6 @@ public:
   arma::rowvec& get_vac_cov_r_to(){ return vac_cov_r_to; }
   arma::rowvec& get_vac_cov_c_to(){ return vac_cov_c_to; } 
   arma::rowvec& get_vac_waning(){ return vac_waning; }
+  arma::rowvec& get_vac_waning_to(){ return vac_waning_to; }
   arma::rowvec& get_vac_cov_r(){ return vac_cov_r; }
 };

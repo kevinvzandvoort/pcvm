@@ -102,7 +102,8 @@ class Compartment{
   void updateDerivs(arma::rowvec &additional_value){
     delta += additional_value;
   }
-      
+  
+  //to be used for any additional changes to the derivatives that need to be processed after the demographic update, e.g. vaccination campaign changes that are implemented using difference equations rather than events
   void updateDerivs2(arma::rowvec &additional_value){
     delta2 += additional_value;
   }    
