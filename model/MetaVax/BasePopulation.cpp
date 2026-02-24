@@ -46,11 +46,6 @@ BasePopulation::BasePopulation(int n_agrp, Rcpp::List parms, int p)
         vac_parms["waning"] = Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros));
         vac_parms["efficacy_transmission"] = Rcpp::wrap(arma::rowvec(n_agrp, arma::fill::zeros));
       }
-
-      //if waning_to is not specified, set to 0 (waning always to unvaccinated stratum)
-      if(!vac_parms.contains("waning_to")){
-        vac_parms["waning_to"] = Rcpp::wrap(0);
-      }
       
       //final stratum has no coverage
       if(t == (vstrata.size()-1)){

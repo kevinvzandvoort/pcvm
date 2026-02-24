@@ -47,6 +47,13 @@ void vaccineCampaignEvent(int *n, double *t, double *y) {
   }
 }
 
+//Helper function to check if a name exists in a list
+bool has_name(Rcpp::List x, const std::string& key) {
+    Rcpp::CharacterVector nms = x.names();
+    if (nms.isNULL()) return false;
+    return Rcpp::as<bool>(Rcpp::any(nms == key));
+}
+
 //This function sets the model up, and stores the parameter values in memory. It is only called once when setting up
 // the model
 void initmod(void (* odeparms)(int *, double *)) {

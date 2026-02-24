@@ -19,8 +19,7 @@ public:
   BaseVaccinationGroup(int &n_agrp, Rcpp::List &vac_parms)
     : vac_waning(Rcpp::as<arma::rowvec>(vac_parms["waning"])), vac_cov_r_index(0), vac_cov_c_index(0),
       vac_cov_r_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_r"])), vac_cov_c_values(Rcpp::as<Rcpp::List>(vac_parms["coverage_c"])),
-      vac_cov_c_implemented(false), n_agrp(n_agrp), vac_eff(Rcpp::as<arma::rowvec>(vac_parms["efficacy_transmission"])),
-      vac_waning_to(int(vac_parms["waning_to"]))
+      vac_cov_c_implemented(false), n_agrp(n_agrp), vac_eff(Rcpp::as<arma::rowvec>(vac_parms["efficacy_transmission"]))
   {
     vac_cov_r_change_time = (vac_cov_r_values.size() == 0 ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_r_values[vac_cov_r_index])["time"]);
     if(vac_cov_r_change_time > 0.0){
@@ -38,6 +37,13 @@ public:
     vac_cov_c_to = Rcpp::as<arma::rowvec>(Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["coverage_to"]);
     vac_cov_c_change_final = vac_cov_c_index == (vac_cov_c_values.size() - 1); //check if this is the final value to be updated
     vac_cov_c_change_time = (vac_cov_c_values.size() == 0 ? 999999 : Rcpp::as<Rcpp::List>(vac_cov_c_values[vac_cov_c_index])["time"]);
+
+    //if vac_waning_to is not specified, set to 0 (waning always to unvaccinated stratum)
+    if(!has_name(vac_parms, "waning_to")){
+      vac_waning_to = 0;
+    } else {
+      vac_waning_to = Rcpp::as<int>(vac_parms["waning_to"]);
+    }
 
     N = arma::rowvec(n_agrp, arma::fill::zeros);
     //Compartments are stored in a vector with Compartment objects, to be created when class is extended
