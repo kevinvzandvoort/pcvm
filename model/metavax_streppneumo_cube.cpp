@@ -12,6 +12,18 @@
 
 // External library includes
 #include <R.h>
+
+// Fix macros on macOS
+#ifdef error
+#pragma push_macro("error")
+#undef error
+#endif
+#include <fstream>
+#include <iostream>
+#ifdef error
+#pragma pop_macro("error")
+#endif
+
 #include <RcppArmadillo.h>
 //The RcppArmadillo attribute sets some macros that enable some external libraries and speed up Armadillo
 // [[Rcpp::depends(RcppArmadillo)]]

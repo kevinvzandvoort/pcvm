@@ -24,12 +24,12 @@ processIncidence = function(modelled_result, model_params){
             setNames(c("population", "ccr", "age", "compartment"))) %>%
     merge(getParameter(model_params, level = "vaccination_group", population = modelled_result[, unique(population)], key = "efficacy_disease"),
           by = c("population", "age"), allow.cartesian = TRUE) %>%
-    merge(getParameter(model_params, level = "vaccination_group", population = modelled_result[, unique(population)], key = "efficacy_disease_OT"),
-          by = c("population", "age"), allow.cartesian = TRUE) %>%
+    merge(getParameter(model_params, level = "vaccination_group", population = modelled_result[, unique(population)], key = "efficacy_disease_ot"),
+          by = c("population", "age", "vaccination_group"), allow.cartesian = TRUE) %>%
     .[, efficacy_disease := ifelse(compartment == "iVT", efficacy_disease,
-                                   ifelse(compartment == "iOT", efficacy_disease_OT, 0))] %>%
+                                   ifelse(compartment == "iOT", efficacy_disease_ot, 0))] %>%
     .[, ccr := ccr * (1 - efficacy_disease)] %>%
-    .[, -"efficacy_disease"]
+    .[, -c("efficacy_disease", "efficacy_disease_ot")]
   
   modelled_result = modelled_result[outcome == "incidence"] %>%
     merge(ccr_values, by = c("population", "vaccination_group", "compartment", "age")) %>%
