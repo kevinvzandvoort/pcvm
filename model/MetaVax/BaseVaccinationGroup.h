@@ -110,6 +110,6 @@ public:
   arma::rowvec& get_vac_cov_r_to(){ return vac_cov_r_to; }
   arma::rowvec& get_vac_cov_c_to(){ return vac_cov_c_to; } 
   arma::rowvec& get_vac_waning(){ return vac_waning; }
-  arma::rowvec& get_vac_waning_to(){ return vac_waning_to; }
+  int& get_vac_waning_to(){ return vac_waning_to; }
   arma::rowvec& get_vac_cov_r(){ return vac_cov_r; }
 };
